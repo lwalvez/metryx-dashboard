@@ -90,6 +90,11 @@
         </div>
 
         <div class="topbar__actions">
+          <!-- Capture metrics -->
+          <button class="icon-btn" id="shotBtn" aria-label="Capturar métricas" title="Tirar print das métricas">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none"><path d="M4 8h3l1.1-2h7.8L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.2" stroke="currentColor" stroke-width="1.7"/></svg>
+          </button>
+
           <!-- Client selector -->
           <div class="dropdown" id="clientDd">
             <button class="btn btn--ghost dropdown__trigger" aria-haspopup="listbox" aria-expanded="false">
@@ -224,6 +229,7 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+  <script src="js/html2canvas.min.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

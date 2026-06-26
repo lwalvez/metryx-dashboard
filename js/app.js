@@ -570,6 +570,96 @@
     if (state.view === "dashboard" && current) renderCombo(current); // recolor svg
   }
 
+  /* ---------- capture metrics (PNG screenshot) ---------- */
+  // html2canvas 1.4.1 only understands hex / rgb / rgba. Chrome resolves
+  // color-mix() to a modern color(srgb …) value, which html2canvas rejects.
+  // Normalize every computed color to rgb via a 2D context, then bake it
+  // inline across the whole capture frame so nothing unsupported remains.
+  const _cctx = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+  function toRGB(v) {
+    if (!v || v === "none" || v === "transparent" || v.includes("gradient")) return v;
+    // Read back actual pixels — canvas fillStyle round-trips color(srgb …)
+    // unchanged, so sample the rendered pixel to force rgba() output.
+    try {
+      _cctx.clearRect(0, 0, 1, 1);
+      _cctx.fillStyle = v;
+      _cctx.fillRect(0, 0, 1, 1);
+      const d = _cctx.getImageData(0, 0, 1, 1).data;
+      return `rgba(${d[0]}, ${d[1]}, ${d[2]}, ${(d[3] / 255).toFixed(3)})`;
+    } catch (_) { return v; }
+  }
+  function normalizeForCapture(root) {
+    const nodes = [root, ...root.querySelectorAll("*")];
+    nodes.forEach((node) => {
+      const cs = getComputedStyle(node);
+      const s = node.style;
+      const bgImg = cs.backgroundImage;
+      s.background = "";
+      s.backgroundColor = toRGB(cs.backgroundColor);
+      s.backgroundImage = bgImg.includes("color-mix") || bgImg.includes("color(") ? "none" : bgImg;
+      s.color = toRGB(cs.color);
+      s.borderColor = toRGB(cs.borderColor);
+      s.boxShadow = cs.boxShadow.includes("color-mix") || cs.boxShadow.includes("color(") ? "none" : cs.boxShadow;
+      if (node.namespaceURI === SVGNS) {
+        if (node.getAttribute("stroke")) node.setAttribute("stroke", toRGB(cs.stroke !== "none" ? cs.stroke : cs.color));
+        const fa = node.getAttribute("fill");
+        if (fa && fa !== "none") node.setAttribute("fill", toRGB(cs.fill !== "none" ? cs.fill : cs.color));
+      }
+    });
+  }
+
+  async function captureMetrics(btn) {
+    if (typeof window.html2canvas !== "function") { toast("Captura indisponível", false); return; }
+    const grid = $("#kpiGrid");
+    if (!grid || !grid.children.length) { toast("Nada para capturar", false); return; }
+
+    const rootCss = getComputedStyle(document.documentElement);
+    const bg = toRGB((rootCss.getPropertyValue("--bg") || "#0a0d14").trim());
+    const client = (CLIENTS.find((c) => c.id === state.clientId) || CLIENTS[0]).name;
+    const now = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+
+    // build a polished offscreen frame: brand header + metrics + footer
+    const frame = el("div", "export-frame");
+    frame.style.width = Math.max(720, grid.scrollWidth) + "px";
+    frame.style.padding = "28px";
+    frame.style.background = bg;
+    frame.innerHTML = `
+      <div class="export-head">
+        <div class="export-brand">
+          <span class="brand-mark" aria-hidden="true" style="background:#7c5cff">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none"><path d="M3 17 9 11l4 4 8-8" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M21 7v5M21 7h-5" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>Metryx
+        </div>
+        <div class="export-meta"><b>${client}</b>últimos ${state.range} dias · ${now}</div>
+      </div>`;
+    frame.appendChild(grid.cloneNode(true));
+    frame.insertAdjacentHTML("beforeend", `<div class="export-foot">Gerado em metryx-app · ${now}</div>`);
+    document.body.appendChild(frame);
+    normalizeForCapture(frame);
+
+    btn.classList.add("is-busy");
+    try {
+      const canvas = await window.html2canvas(frame, { backgroundColor: bg, scale: 2, logging: false, useCORS: true });
+      await new Promise((res) => canvas.toBlob((blob) => {
+        if (!blob) { toast("Falha ao gerar print", false); return res(); }
+        const url = URL.createObjectURL(blob);
+        const a = el("a");
+        a.href = url;
+        a.download = `metryx-metricas-${state.clientId}-${state.range}d.png`;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        toast("Print das métricas baixado");
+        res();
+      }, "image/png"));
+    } catch (e) {
+      console.error("captureMetrics:", e);
+      toast("Falha ao gerar print", false);
+    } finally {
+      frame.remove();
+      btn.classList.remove("is-busy");
+    }
+  }
+
   /* ---------- toast ---------- */
   let toastTimer;
   function toast(msg, ok = true) {
@@ -611,6 +701,7 @@
     }));
 
     // buttons
+    $("#shotBtn").addEventListener("click", (e) => captureMetrics(e.currentTarget));
     $("#aiBtn").addEventListener("click", openDrawer);
     $$("[data-close-drawer]").forEach((b) => b.addEventListener("click", closeDrawer));
     $("#themeBtn").addEventListener("click", toggleTheme);

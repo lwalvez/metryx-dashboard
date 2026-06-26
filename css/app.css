@@ -200,6 +200,18 @@ html.light .pill { color: var(--brand); }
   color: var(--text-2); transition: background var(--t-fast), color var(--t-fast);
 }
 .icon-btn:hover { background: var(--surface-3); color: var(--text); }
+.icon-btn.is-busy { opacity: .55; pointer-events: none; }
+.icon-btn.is-busy svg { animation: pulse 900ms ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .4; } }
+
+/* offscreen frame used to render the metrics screenshot */
+.export-frame { position: fixed; top: 0; left: -10000px; z-index: -1; pointer-events: none; }
+.export-frame .export-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+.export-frame .export-brand { display: flex; align-items: center; gap: 10px; font-family: "Sora", sans-serif; font-weight: 700; font-size: 1.15rem; color: var(--text); }
+.export-frame .export-brand .brand-mark { width: 30px; height: 30px; }
+.export-frame .export-meta { text-align: right; font-size: .8rem; color: var(--text-2); }
+.export-frame .export-meta b { display: block; color: var(--text); font-size: .9rem; }
+.export-frame .export-foot { margin-top: 18px; font-size: .72rem; color: var(--text-3); text-align: right; }
 .ico-sun { display: none; }
 html.light .ico-sun { display: block; }
 html.light .ico-moon { display: none; }
