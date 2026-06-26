@@ -1,0 +1,11 @@
+# scrape backup — local only, not part of the deploy
+index.scraped.html
+
+# tooling
+.vercel
+node_modules
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

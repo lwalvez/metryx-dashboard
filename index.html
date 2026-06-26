@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="description" content="Metryx — painel de performance de tráfego pago. Investimento, receita, ROAS e funil de conversão em um só lugar." />
+  <title>Dashboard · Metryx</title>
+  <link rel="icon" href="images/favicon.ico" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Pular para o conteúdo</a>
+
+  <div class="app" id="app">
+    <!-- ============================ SIDEBAR ============================ -->
+    <aside class="sidebar" id="sidebar" aria-label="Navegação principal">
+      <div class="sidebar__brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none"><path d="M3 17 9 11l4 4 8-8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M21 7v5M21 7h-5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <span class="brand-name">Metryx</span>
+        <button class="sidebar__close" id="sidebarClose" aria-label="Fechar menu">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+
+      <nav class="nav" id="nav" aria-label="Seções">
+        <a class="nav__item is-active" href="#" data-view="dashboard">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none"><rect x="3" y="3" width="7" height="9" rx="1.5" stroke="currentColor" stroke-width="1.8"/><rect x="14" y="3" width="7" height="5" rx="1.5" stroke="currentColor" stroke-width="1.8"/><rect x="14" y="12" width="7" height="9" rx="1.5" stroke="currentColor" stroke-width="1.8"/><rect x="3" y="16" width="7" height="5" rx="1.5" stroke="currentColor" stroke-width="1.8"/></svg>
+          <span>Dashboard</span>
+        </a>
+        <a class="nav__item" href="#" data-view="planilha">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none"><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M3 9h18M9 4v16" stroke="currentColor" stroke-width="1.8"/></svg>
+          <span>Planilha</span>
+        </a>
+        <a class="nav__item" href="#" data-view="integracoes">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none"><path d="M9 7V5a3 3 0 0 1 6 0v2M7 7h10a2 2 0 0 1 2 2v3a7 7 0 0 1-14 0V9a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+          <span>Integrações</span>
+        </a>
+        <a class="nav__item" href="#" data-view="relatorios">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none"><path d="M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M14 3v5h5M9 13l2 2 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>Relatórios</span>
+        </a>
+        <a class="nav__item" href="#" data-view="insights">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none"><path d="M12 3a6 6 0 0 0-3.6 10.8c.6.45.96 1.14.96 1.88V17h5.28v-1.32c0-.74.36-1.43.96-1.88A6 6 0 0 0 12 3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9.5 20h5M10.5 17.5h3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <span>Insights IA</span>
+          <span class="nav__badge">IA</span>
+        </a>
+        <a class="nav__item" href="#" data-view="alertas">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <span>Alertas</span>
+          <span class="nav__count" id="alertCount">3</span>
+        </a>
+        <a class="nav__item" href="#" data-view="clientes">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none"><circle cx="9" cy="8" r="3.2" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 6.2a3 3 0 0 1 0 5.6M17.5 19a5.5 5.5 0 0 0-3-4.9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <span>Clientes</span>
+        </a>
+        <a class="nav__item" href="#" data-view="config">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 13.5a7.8 7.8 0 0 0 0-3l1.7-1.3-1.8-3.1-2 .8a7.6 7.6 0 0 0-2.6-1.5L14.4 2H9.6l-.3 2.1a7.6 7.6 0 0 0-2.6 1.5l-2-.8L2.9 7.9l1.7 1.3a7.8 7.8 0 0 0 0 3L2.9 13.5l1.8 3.1 2-.8c.76.64 1.64 1.15 2.6 1.5L9.6 22h4.8l.3-2.1c.96-.35 1.84-.86 2.6-1.5l2 .8 1.8-3.1-1.7-1.3Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+          <span>Configurações</span>
+        </a>
+      </nav>
+
+      <div class="plan-card">
+        <div class="plan-card__top">
+          <span class="plan-card__tag">Starter · Trial</span>
+        </div>
+        <p class="plan-card__text"><strong id="trialDays">14 dias</strong> grátis restantes</p>
+        <div class="plan-card__bar"><span id="trialBar" style="width:46%"></span></div>
+        <button class="btn btn--brand btn--block" id="upgradeBtn">Fazer upgrade</button>
+      </div>
+    </aside>
+    <div class="scrim" id="scrim" hidden></div>
+
+    <!-- ============================ MAIN ============================ -->
+    <div class="content">
+      <!-- Topbar -->
+      <header class="topbar">
+        <button class="icon-btn topbar__menu" id="menuBtn" aria-label="Abrir menu">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+
+        <div class="topbar__title">
+          <h1 id="viewTitle">Visão geral</h1>
+          <p class="topbar__sub"><span id="subClient">Todos os clientes</span> · <span id="subRange">últimos 7 dias</span></p>
+        </div>
+
+        <div class="topbar__actions">
+          <!-- Client selector -->
+          <div class="dropdown" id="clientDd">
+            <button class="btn btn--ghost dropdown__trigger" aria-haspopup="listbox" aria-expanded="false">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none"><circle cx="9" cy="8" r="3" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 6a3 3 0 0 1 0 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+              <span id="clientLabel">Todos os clientes</span>
+              <svg class="caret" viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div class="dropdown__menu" role="listbox" id="clientMenu"></div>
+          </div>
+
+          <!-- Range segmented -->
+          <div class="segmented" role="tablist" aria-label="Período" id="rangeSeg">
+            <button role="tab" class="seg is-active" data-range="7">7 dias</button>
+            <button role="tab" class="seg" data-range="30">30 dias</button>
+            <button role="tab" class="seg" data-range="90">90 dias</button>
+          </div>
+
+          <!-- Metrics popover -->
+          <div class="dropdown" id="metricsDd">
+            <button class="btn btn--ghost dropdown__trigger" aria-haspopup="true" aria-expanded="false">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M4 6h16M7 12h10M10 18h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+              <span>Métricas</span><span class="pill" id="metricCount">4</span>
+            </button>
+            <div class="dropdown__menu dropdown__menu--right" id="metricsMenu"></div>
+          </div>
+
+          <button class="btn btn--ghost" id="shareBtn">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M8.7 10.7 15.3 7M8.7 13.3l6.6 3.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="6" cy="12" r="2.4" stroke="currentColor" stroke-width="1.8"/><circle cx="18" cy="6" r="2.4" stroke="currentColor" stroke-width="1.8"/><circle cx="18" cy="18" r="2.4" stroke="currentColor" stroke-width="1.8"/></svg>
+            <span class="hide-sm">Compartilhar</span>
+          </button>
+
+          <button class="btn btn--brand" id="aiBtn">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="m12 3 1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8L12 3Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M18 14l.9 2.1L21 17l-2.1.9L18 20l-.9-2.1L15 17l2.1-.9L18 14Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+            <span class="hide-sm">Insights IA</span>
+          </button>
+
+          <button class="icon-btn" id="themeBtn" aria-label="Alternar tema">
+            <svg class="ico-moon" viewBox="0 0 24 24" width="20" height="20" fill="none"><path d="M20 14.5A8 8 0 0 1 9.5 4 7 7 0 1 0 20 14.5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+            <svg class="ico-sun" viewBox="0 0 24 24" width="20" height="20" fill="none"><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.8"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          </button>
+
+          <div class="avatar" title="Alves G">AG</div>
+        </div>
+      </header>
+
+      <!-- Scrollable main -->
+      <main class="main" id="main">
+        <!-- Dashboard view -->
+        <section class="view view--dashboard is-active" id="view-dashboard">
+          <!-- KPI grid -->
+          <div class="kpi-grid" id="kpiGrid"></div>
+
+          <!-- Charts row -->
+          <div class="grid grid--2">
+            <section class="card chart-card" aria-label="Receita x Investimento">
+              <header class="card__head">
+                <div>
+                  <h2 class="card__title">Receita x Investimento</h2>
+                  <p class="card__sub" id="rvSub">Diário · R$</p>
+                </div>
+                <div class="legend" id="rvLegend">
+                  <button class="legend__item is-on" data-series="receita"><i style="background:var(--c-receita)"></i>Receita</button>
+                  <button class="legend__item is-on" data-series="invest"><i style="background:var(--c-invest)"></i>Investimento</button>
+                </div>
+              </header>
+              <div class="chart" id="comboChart"></div>
+            </section>
+
+            <section class="card chart-card" aria-label="Funil de conversão">
+              <header class="card__head">
+                <div>
+                  <h2 class="card__title">Funil de conversão</h2>
+                  <p class="card__sub">Impressões → Leads</p>
+                </div>
+              </header>
+              <div class="funnel" id="funnel"></div>
+            </section>
+          </div>
+
+          <!-- Channels + table -->
+          <div class="grid grid--2">
+            <section class="card" aria-label="Investimento por canal">
+              <header class="card__head">
+                <div>
+                  <h2 class="card__title">Investimento por canal</h2>
+                  <p class="card__sub">Distribuição do orçamento</p>
+                </div>
+              </header>
+              <div class="channels" id="channels"></div>
+            </section>
+
+            <section class="card" aria-label="Desempenho por campanha">
+              <header class="card__head">
+                <div>
+                  <h2 class="card__title">Campanhas</h2>
+                  <p class="card__sub">Ordenado por ROAS</p>
+                </div>
+              </header>
+              <div class="table-wrap">
+                <table class="data-table" id="campaignTable">
+                  <thead>
+                    <tr>
+                      <th>Campanha</th><th class="num">Invest.</th><th class="num">Receita</th><th class="num">ROAS</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <!-- Generic / secondary views render here -->
+        <section class="view" id="view-generic"></section>
+      </main>
+    </div>
+  </div>
+
+  <!-- AI Insights drawer -->
+  <div class="drawer" id="aiDrawer" aria-hidden="true">
+    <div class="drawer__scrim" data-close-drawer></div>
+    <aside class="drawer__panel" role="dialog" aria-modal="true" aria-labelledby="aiDrawerTitle">
+      <header class="drawer__head">
+        <h2 id="aiDrawerTitle"><span class="spark" aria-hidden="true">✦</span> Insights IA</h2>
+        <button class="icon-btn" data-close-drawer aria-label="Fechar">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </header>
+      <div class="drawer__body" id="aiBody"></div>
+    </aside>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

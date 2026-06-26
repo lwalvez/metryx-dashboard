@@ -1,0 +1,91 @@
+{
+  "title": "Dashboard · Metryx",
+  "url": "https://metryx-app.vercel.app/app?range=7",
+  "domain": "metryx-app.vercel.app",
+  "folderName": "metryx-app.vercel.app",
+  "charset": "UTF-8",
+  "extractedAt": "2026-06-26T17:46:27.049Z",
+  "counts": {
+    "css": 1,
+    "js": 16,
+    "images": 1,
+    "downloaded": 18,
+    "failed": 0
+  },
+  "assets": [
+    {
+      "url": "https://metryx-app.vercel.app/_next/static/chunks/01qwhgxautrrb.css",
+      "path": "css/01qwhgxautrrb.css"
+    },
+    {
+      "url": "https://metryx-app.vercel.app/_next/static/chunks/018wh8zp6bjth.js",
+      "path": "js/018wh8zp6bjth.js"
+    },
+    {
+      "url": "https://metryx-app.vercel.app/_next/static/chunks/27jktro2p5rq9.js",
+      "path": "js/27jktro2p5rq9.js"
+    },
+    {
+      "url": "https://metryx-app.vercel.app/_next/static/chunks/2nykiepra7i1k.js",
+      "path": "js/2nykiepra7i1k.js"
+    },
+    {
+      "url": "https://metryx-app.vercel.app/_next/static/chunks/0dkofbdx_f6ir.js",
+      "path": "js/0dkofbdx_f6ir.js"
+    },
+    {
+      "url": "https://metryx-app.vercel.app/_next/static/chunks/turbopack-1ynyhjddhjmaj.js",
+      "path": "js/turbopack-1ynyhjddhjmaj.js"
+    },
+    {
+      "url": "https://metryx-app.vercel.app/_next/static/chunks/0qj17c9xd17qr.js",
+      "path": "js/0qj17c9xd17qr.js"
+    },
+    {
+      "url": "https://metryx-app.vercel.app/_next/static/chunks/1-8s9_t85wwr4.js",
+      "path": "js/1-8s9_t85wwr4.js"
+    },
+    {
+      "url": "https://metryx-app.vercel.app/_next/static/chunks/29m8oo56wij-l.js",
+      "path": "js/29m8oo56wij-l.js"
+    },
+    {
+      "url": "https://metryx-app.vercel.app/_next/static/chunks/34h6goq1_-ydb.js",
+      "path": "js/34h6goq1_-ydb.js"
+    },
+    {
+      "url": "https://metryx-app.vercel.app/_next/static/chunks/3k8v6tlyajqiz.js",
+      "path": "js/3k8v6tlyajqiz.js"
+    },
+    {
+      "url": "https://metryx-app.vercel.app/_next/static/chunks/3r1x27ec5b-ac.js",
+      "path": "js/3r1x27ec5b-ac.js"
+    },
+    {
+      "url": "https://metryx-app.vercel.app/_next/static/chunks/0cz1d0mv5g_q7.js",
+      "path": "js/0cz1d0mv5g_q7.js"
+    },
+    {
+      "url": "https://metryx-app.vercel.app/_next/static/chunks/3w2w5vwn9s8vy.js",
+      "path": "js/3w2w5vwn9s8vy.js"
+    },
+    {
+      "url": "https://metryx-app.vercel.app/_next/static/chunks/12z-y3eb6y_se.js",
+      "path": "js/12z-y3eb6y_se.js"
+    },
+    {
+      "url": "https://metryx-app.vercel.app/_next/static/chunks/3ji1orodpngo9.js",
+      "path": "js/3ji1orodpngo9.js"
+    },
+    {
+      "url": "https://metryx-app.vercel.app/_next/static/chunks/2kk9zqg5r_gnh.js",
+      "path": "js/2kk9zqg5r_gnh.js"
+    },
+    {
+      "url": "https://metryx-app.vercel.app/favicon.ico?favicon.2vob68tjqpejf.ico",
+      "path": "images/favicon.ico"
+    }
+  ],
+  "failures": [],
+  "generator": "Site Code Saver v1.0.0"
+}
