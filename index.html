@@ -190,74 +190,94 @@
       <main class="main" id="main">
         <!-- Dashboard view -->
         <section class="view view--dashboard is-active" id="view-dashboard">
-          <!-- KPI grid -->
-          <div class="kpi-grid" id="kpiGrid"></div>
+          <div class="dash-blocks" id="dashBlocks">
+            <!-- KPI grid -->
+            <div class="dash-block dash-block--full" data-block="kpis">
+              <button class="dash-grip" type="button" aria-label="Mover bloco" title="Arraste para mover"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></button>
+              <div class="kpi-grid" id="kpiGrid"></div>
+            </div>
 
-          <!-- Charts row -->
-          <div class="grid grid--2">
-            <section class="card chart-card" id="shot-chart" aria-label="Receita x Investimento">
-              <header class="card__head">
-                <div>
-                  <h2 class="card__title">Receita x Investimento</h2>
-                  <p class="card__sub" id="rvSub">Diário · R$</p>
-                </div>
-                <div class="rv-ctl">
-                  <div class="legend" id="rvLegend">
-                    <button class="legend__item is-on" data-series="receita"><i style="background:var(--c-receita)"></i>Receita</button>
-                    <button class="legend__item is-on" data-series="invest"><i style="background:var(--c-invest)"></i>Investimento</button>
+            <!-- Receita x Investimento -->
+            <div class="dash-block dash-block--full" data-block="chart">
+              <button class="dash-grip" type="button" aria-label="Mover bloco" title="Arraste para mover"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></button>
+              <section class="card chart-card" id="shot-chart" aria-label="Receita x Investimento">
+                <header class="card__head">
+                  <div>
+                    <h2 class="card__title">Receita x Investimento</h2>
+                    <p class="card__sub" id="rvSub">Diário · R$</p>
                   </div>
-                  <select id="chartType" class="chart-type" aria-label="Tipo de gráfico" title="Tipo de gráfico">
-                    <option value="combo">Combo</option>
-                    <option value="bars">Barras</option>
-                    <option value="lines">Linhas</option>
-                    <option value="area">Área</option>
-                  </select>
-                </div>
-              </header>
-              <div class="chart" id="comboChart"></div>
-            </section>
+                  <div class="rv-ctl">
+                    <div class="legend" id="rvLegend">
+                      <button class="legend__item is-on" data-series="receita"><i style="background:var(--c-receita)"></i>Receita</button>
+                      <button class="legend__item is-on" data-series="invest"><i style="background:var(--c-invest)"></i>Investimento</button>
+                    </div>
+                    <select id="chartType" class="chart-type" aria-label="Tipo de gráfico" title="Tipo de gráfico">
+                      <option value="combo">Combo</option>
+                      <option value="bars">Barras</option>
+                      <option value="stacked">Empilhado</option>
+                      <option value="lines">Linhas</option>
+                      <option value="area">Área</option>
+                    </select>
+                  </div>
+                </header>
+                <div class="chart" id="comboChart"></div>
+              </section>
+            </div>
 
-            <section class="card chart-card" id="shot-funnel" aria-label="Funil de conversão">
-              <header class="card__head">
-                <div>
-                  <h2 class="card__title">Funil de conversão</h2>
-                  <p class="card__sub">Impressões → Leads</p>
-                </div>
-              </header>
-              <div class="funnel" id="funnel"></div>
-            </section>
-          </div>
+            <!-- Funil -->
+            <div class="dash-block dash-block--half" data-block="funnel">
+              <button class="dash-grip" type="button" aria-label="Mover bloco" title="Arraste para mover"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></button>
+              <section class="card chart-card" id="shot-funnel" aria-label="Funil de conversão">
+                <header class="card__head">
+                  <div>
+                    <h2 class="card__title">Funil de conversão</h2>
+                    <p class="card__sub">Impressões → Leads</p>
+                  </div>
+                </header>
+                <div class="funnel" id="funnel"></div>
+              </section>
+            </div>
 
-          <!-- Channels + table -->
-          <div class="grid grid--2">
-            <section class="card" id="shot-channels" aria-label="Investimento por canal">
-              <header class="card__head">
-                <div>
-                  <h2 class="card__title">Investimento por canal</h2>
-                  <p class="card__sub">Distribuição do orçamento</p>
-                </div>
-              </header>
-              <div class="channels" id="channels"></div>
-            </section>
+            <!-- Canais -->
+            <div class="dash-block dash-block--half" data-block="channels">
+              <button class="dash-grip" type="button" aria-label="Mover bloco" title="Arraste para mover"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></button>
+              <section class="card" id="shot-channels" aria-label="Investimento por canal">
+                <header class="card__head">
+                  <div>
+                    <h2 class="card__title">Investimento por canal</h2>
+                    <p class="card__sub">Distribuição do orçamento</p>
+                  </div>
+                  <div class="segmented seg--sm" id="chanType" role="tablist" aria-label="Tipo">
+                    <button class="seg is-active" data-chan="bars">Barras</button>
+                    <button class="seg" data-chan="donut">Rosca</button>
+                  </div>
+                </header>
+                <div class="channels" id="channels"></div>
+              </section>
+            </div>
 
-            <section class="card" id="shot-table" aria-label="Desempenho por campanha">
-              <header class="card__head">
-                <div>
-                  <h2 class="card__title">Campanhas</h2>
-                  <p class="card__sub">Ordenado por ROAS</p>
+            <!-- Campanhas -->
+            <div class="dash-block dash-block--full" data-block="table">
+              <button class="dash-grip" type="button" aria-label="Mover bloco" title="Arraste para mover"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></button>
+              <section class="card" id="shot-table" aria-label="Desempenho por campanha">
+                <header class="card__head">
+                  <div>
+                    <h2 class="card__title">Campanhas</h2>
+                    <p class="card__sub">Ordenado por ROAS</p>
+                  </div>
+                </header>
+                <div class="table-wrap">
+                  <table class="data-table" id="campaignTable">
+                    <thead>
+                      <tr>
+                        <th>Campanha</th><th class="num">Invest.</th><th class="num">Receita</th><th class="num">ROAS</th>
+                      </tr>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
                 </div>
-              </header>
-              <div class="table-wrap">
-                <table class="data-table" id="campaignTable">
-                  <thead>
-                    <tr>
-                      <th>Campanha</th><th class="num">Invest.</th><th class="num">Receita</th><th class="num">ROAS</th>
-                    </tr>
-                  </thead>
-                  <tbody></tbody>
-                </table>
-              </div>
-            </section>
+              </section>
+            </div>
           </div>
         </section>
 

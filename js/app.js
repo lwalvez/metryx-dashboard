@@ -133,7 +133,8 @@
     series: { receita: true, invest: true },
     metrics: JSON.parse(localStorage.getItem("metryx-metrics") || "null") || ["invest", "receita", "roas", "cpl"],
     miniChart: localStorage.getItem("metryx-minichart") !== "0", // showMiniChart, default on
-    chartType: ["combo", "bars", "lines", "area"].includes(localStorage.getItem("metryx-charttype")) ? localStorage.getItem("metryx-charttype") : "combo",
+    chartType: ["combo", "bars", "stacked", "lines", "area"].includes(localStorage.getItem("metryx-charttype")) ? localStorage.getItem("metryx-charttype") : "combo",
+    channelChart: localStorage.getItem("metryx-chanchart") === "donut" ? "donut" : "bars",
   };
 
   /* ============================================================
@@ -387,6 +388,7 @@
     let dragId = null;
     $$(".kpi", grid).forEach((card) => {
       card.addEventListener("dragstart", (e) => {
+        e.stopPropagation(); // don't also drag the parent dashboard block
         dragId = card.dataset.m; card.classList.add("is-dragging");
         if (e.dataTransfer) { e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", dragId); } catch (_) {} }
       });
@@ -408,6 +410,49 @@
     });
   }
 
+  // Reorder whole dashboard blocks (KPIs/chart/funnel/channels/table) via grip.
+  const DASH_BLOCKS = ["kpis", "chart", "funnel", "channels", "table"];
+  function saveDashOrder(order) { try { localStorage.setItem("metryx-dash-order", JSON.stringify(order)); } catch (_) {} }
+  function loadDashOrder() {
+    let o = null; try { o = JSON.parse(localStorage.getItem("metryx-dash-order") || "null"); } catch (_) {}
+    if (!Array.isArray(o)) return DASH_BLOCKS.slice();
+    const valid = o.filter((b) => DASH_BLOCKS.includes(b));
+    DASH_BLOCKS.forEach((b) => { if (!valid.includes(b)) valid.push(b); });
+    return valid;
+  }
+  function applyDashOrder() {
+    const wrap = $("#dashBlocks"); if (!wrap) return;
+    loadDashOrder().forEach((b) => { const node = wrap.querySelector(`[data-block="${b}"]`); if (node) wrap.appendChild(node); });
+  }
+  function enableDashDnD() {
+    const wrap = $("#dashBlocks"); if (!wrap) return;
+    let dragB = null;
+    $$(".dash-block", wrap).forEach((block) => {
+      const grip = $(".dash-grip", block);
+      if (grip) {
+        grip.addEventListener("mousedown", () => block.setAttribute("draggable", "true"));
+        grip.addEventListener("mouseup", () => block.removeAttribute("draggable"));
+      }
+      block.addEventListener("dragstart", (e) => {
+        dragB = block.dataset.block; block.classList.add("is-dragging");
+        if (e.dataTransfer) { e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", dragB); } catch (_) {} }
+      });
+      block.addEventListener("dragend", () => { block.classList.remove("is-dragging"); block.removeAttribute("draggable"); $$(".dash-block", wrap).forEach((b) => b.classList.remove("is-dropt")); });
+      block.addEventListener("dragover", (e) => { e.preventDefault(); if (block.dataset.block !== dragB) block.classList.add("is-dropt"); });
+      block.addEventListener("dragleave", () => block.classList.remove("is-dropt"));
+      block.addEventListener("drop", (e) => {
+        e.preventDefault(); block.classList.remove("is-dropt");
+        const targetB = block.dataset.block;
+        if (!dragB || dragB === targetB) return;
+        const order = $$(".dash-block", wrap).map((b) => b.dataset.block);
+        const from = order.indexOf(dragB), to = order.indexOf(targetB);
+        if (from < 0 || to < 0) return;
+        order.splice(from, 1); order.splice(to, 0, dragB);
+        saveDashOrder(order); applyDashOrder();
+      });
+    });
+  }
+
   /* ============================================================
      RENDER: Combo chart (bars = investimento, line+area = receita)
      ============================================================ */
@@ -424,7 +469,11 @@
     const showInv = state.series.invest, showRec = state.series.receita;
 
     let maxV = 0;
-    pts.forEach((p) => { if (showInv) maxV = Math.max(maxV, p.invest); if (showRec) maxV = Math.max(maxV, p.receita); });
+    const isStacked = state.chartType === "stacked";
+    pts.forEach((p) => {
+      if (isStacked) maxV = Math.max(maxV, (showInv ? p.invest : 0) + (showRec ? p.receita : 0));
+      else { if (showInv) maxV = Math.max(maxV, p.invest); if (showRec) maxV = Math.max(maxV, p.receita); }
+    });
     maxV = maxV || 1;
     // nice ceil
     const niceMax = (() => { const pow = Math.pow(10, Math.floor(Math.log10(maxV))); return Math.ceil(maxV / pow) * pow; })();
@@ -496,13 +545,33 @@
       if (n <= 30) linePts.forEach(([x, y]) => svg.appendChild(svgEl("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: 3, fill: "var(--surface)", stroke: color, "stroke-width": 2 })));
     }
 
-    if (showInv) {
-      if (invIsBar) drawBarsSeries("invest", "url(#invGrad)", paired ? 1 : 0);
-      else drawLineSeries("invest", "var(--c-invest)", "url(#invGrad)", type === "area");
+    function drawStacked() {
+      const bw = Math.max(5, Math.min(34, slot * (n > 30 ? 0.7 : 0.46)));
+      pts.forEach((p, i) => {
+        const cx = pad.l + slot * i + slot / 2; const x = cx - bw / 2;
+        let base = pad.t + ih;
+        const addSeg = (val, grad) => {
+          const h = (val / niceMax) * ih; const y = base - h;
+          const rect = svgEl("rect", { class: "bar", x: x.toFixed(1), y: y.toFixed(1), width: bw.toFixed(1), height: Math.max(0, h).toFixed(1), rx: Math.min(4, bw / 2), fill: grad });
+          if (!reduceMotion) { rect.style.transformOrigin = `${cx.toFixed(1)}px ${(pad.t + ih)}px`; rect.animate([{ transform: "scaleY(0)" }, { transform: "scaleY(1)" }], { duration: 520, delay: i * (n > 30 ? 4 : 18), easing: "cubic-bezier(.2,.7,.2,1)", fill: "backwards" }); }
+          svg.appendChild(rect); base = y;
+        };
+        if (showInv) addSeg(p.invest, "url(#invGrad)");
+        if (showRec) addSeg(p.receita, "url(#recBarGrad)");
+      });
     }
-    if (showRec) {
-      if (recIsBar) drawBarsSeries("receita", "url(#recBarGrad)", paired ? 2 : 0);
-      else drawLineSeries("receita", "var(--c-receita)", "url(#recGrad)", type !== "lines");
+
+    if (type === "stacked") {
+      drawStacked();
+    } else {
+      if (showInv) {
+        if (invIsBar) drawBarsSeries("invest", "url(#invGrad)", paired ? 1 : 0);
+        else drawLineSeries("invest", "var(--c-invest)", "url(#invGrad)", type === "area");
+      }
+      if (showRec) {
+        if (recIsBar) drawBarsSeries("receita", "url(#recBarGrad)", paired ? 2 : 0);
+        else drawLineSeries("receita", "var(--c-receita)", "url(#recGrad)", type !== "lines");
+      }
     }
 
     // x labels (skip to avoid crowding)
@@ -577,9 +646,33 @@
   /* ============================================================
      RENDER: Channels
      ============================================================ */
+  function renderChannelsDonut(host, d) {
+    const total = d.channels.reduce((s, c) => s + c.value, 0) || 1;
+    const size = 220, r = 84, cx = size / 2, cy = size / 2, sw = 30;
+    const C = 2 * Math.PI * r;
+    let offset = 0;
+    const segs = d.channels.map((c) => {
+      const dash = (c.value / total) * C;
+      const seg = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${c.color}" stroke-width="${sw}" stroke-linecap="butt" stroke-dasharray="${dash.toFixed(2)} ${(C - dash).toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 ${cx} ${cy})"/>`;
+      offset += dash;
+      return seg;
+    }).join("");
+    const legend = d.channels.map((c) => `<div class="dn-leg"><span class="ch-dot" style="background:${c.color}"></span><span class="dn-leg__n">${c.name}</span><span class="dn-leg__v">${brl(c.value)} <small>${(c.value / total * 100).toFixed(0)}%</small></span></div>`).join("");
+    host.innerHTML = `
+      <div class="donut-wrap">
+        <svg class="donut" viewBox="0 0 ${size} ${size}" aria-label="Investimento por canal">
+          ${segs}
+          <text x="${cx}" y="${cy - 4}" text-anchor="middle" class="dn-c-top">${brl(total)}</text>
+          <text x="${cx}" y="${cy + 15}" text-anchor="middle" class="dn-c-sub">total</text>
+        </svg>
+        <div class="donut-legend">${legend}</div>
+      </div>`;
+  }
+
   function renderChannels(d) {
     const host = $("#channels");
     host.innerHTML = "";
+    if (state.channelChart === "donut") { renderChannelsDonut(host, d); return; }
     const max = Math.max(...d.channels.map((c) => c.value));
     d.channels.forEach((c) => {
       const row = el("div", "ch-row");
@@ -2241,6 +2334,17 @@ ${metasHTML}
       });
     }
 
+    // channel chart type (bars / donut)
+    $$("#chanType .seg").forEach((s) => {
+      s.classList.toggle("is-active", s.dataset.chan === state.channelChart);
+      s.addEventListener("click", () => {
+        state.channelChart = s.dataset.chan === "donut" ? "donut" : "bars";
+        try { localStorage.setItem("metryx-chanchart", state.channelChart); } catch (_) {}
+        $$("#chanType .seg").forEach((x) => x.classList.toggle("is-active", x.dataset.chan === state.channelChart));
+        if (current) renderChannels(current);
+      });
+    });
+
     // buttons
     $("#shotBtn").addEventListener("click", (e) => captureMetrics(e.currentTarget));
     $("#aiBtn").addEventListener("click", openDrawer);
@@ -2286,6 +2390,8 @@ ${metasHTML}
     buildMetricsMenu();
     $("#metricCount").textContent = state.metrics.length;
     bind();
+    applyDashOrder();   // restore saved dashboard block order
+    enableDashDnD();    // enable block drag-reorder via grips
     // sync controls to state
     selectClient(state.clientId);
     setRange(state.range);
