@@ -2166,6 +2166,9 @@ ${metasHTML}
   /* ---------- mobile nav ---------- */
   function openNav() { $("#app").classList.add("nav-open"); $("#scrim").hidden = false; }
   function closeNav() { $("#app").classList.remove("nav-open"); $("#scrim").hidden = true; }
+  const isMobileNav = () => matchMedia("(max-width: 980px)").matches;
+  function setNavCollapsed(v) { $("#app").classList.toggle("nav-collapsed", v); try { localStorage.setItem("metryx-nav-collapsed", v ? "1" : "0"); } catch (_) {} }
+  function toggleNavCollapsed() { setNavCollapsed(!$("#app").classList.contains("nav-collapsed")); }
 
   /* ---------- theme ---------- */
   function applyTheme() {
@@ -2424,8 +2427,8 @@ ${metasHTML}
       (navigator.clipboard?.writeText(url) || Promise.reject()).then(() => toast("Link do painel copiado")).catch(() => toast("Link: " + url));
     });
     $("#upgradeBtn").addEventListener("click", () => toast("Plano Pro ativo · acesso completo"));
-    $("#menuBtn").addEventListener("click", openNav);
-    $("#sidebarClose").addEventListener("click", closeNav);
+    $("#menuBtn").addEventListener("click", () => { if (isMobileNav()) openNav(); else toggleNavCollapsed(); });
+    $("#sidebarClose").addEventListener("click", () => { if (isMobileNav()) closeNav(); else setNavCollapsed(true); });
     $("#scrim").addEventListener("click", closeNav);
 
     // keyboard
@@ -2459,6 +2462,7 @@ ${metasHTML}
     buildMetricsMenu();
     $("#metricCount").textContent = state.metrics.length;
     bind();
+    if (localStorage.getItem("metryx-nav-collapsed") === "1") $("#app").classList.add("nav-collapsed");
     applyDashOrder();   // restore saved dashboard block order
     enableDashDnD();    // enable block drag-reorder via grips
     // sync controls to state

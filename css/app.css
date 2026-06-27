@@ -847,3 +847,11 @@ html.dark .cfg-row input { background: #0e131c; }
 
 .dash-insights { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 @media (max-width: 620px) { .sec-metrics { grid-template-columns: repeat(2, 1fr); } .highlights, .dash-insights { grid-template-columns: 1fr; } }
+
+/* Sidebar close button (always available) + desktop collapse */
+.sidebar__close { display: grid; place-items: center; }
+@media (min-width: 981px) {
+  .app.nav-collapsed { grid-template-columns: 1fr; }
+  .app.nav-collapsed .sidebar { display: none; }
+  .app.nav-collapsed .topbar__menu { display: grid; }
+}
