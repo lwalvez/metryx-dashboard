@@ -648,7 +648,7 @@
       <button class="btn btn--brand" id="emptyCta">${view === "insights" ? "Abrir insights" : "Começar"}</button>
     </div></div>`;
     const cta = $("#emptyCta");
-    if (cta) cta.addEventListener("click", () => { view === "insights" ? openDrawer() : toast("Recurso disponível no plano Pro"); });
+    if (cta) cta.addEventListener("click", () => { view === "insights" ? openDrawer() : toast("Recurso liberado · em construção"); });
   }
 
   /* ============================================================
@@ -894,7 +894,7 @@
       const url = location.href.split("#")[0] + "?client=" + state.clientId + "&range=" + state.range;
       (navigator.clipboard?.writeText(url) || Promise.reject()).then(() => toast("Link do painel copiado")).catch(() => toast("Link: " + url));
     });
-    $("#upgradeBtn").addEventListener("click", () => toast("Redirecionando para planos…"));
+    $("#upgradeBtn").addEventListener("click", () => toast("Plano Pro ativo · acesso completo"));
     $("#menuBtn").addEventListener("click", openNav);
     $("#sidebarClose").addEventListener("click", closeNav);
     $("#scrim").addEventListener("click", closeNav);
