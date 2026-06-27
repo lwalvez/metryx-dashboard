@@ -1093,6 +1093,115 @@
     $("#plFile").addEventListener("change", (e) => { if (e.target.files[0]) importSheetCSV(e.target.files[0]); e.target.value = ""; });
   }
 
+  /* ============================================================
+     INSIGHTS IA — analysis engine + assistant (heuristic, on-data)
+     ============================================================ */
+  function perfScore(d) {
+    let s = 0;
+    s += clamp(d.roas / 6, 0, 1) * 50;                       // ROAS (6x → full)
+    s += clamp((d.delta.receita + 20) / 40, 0, 1) * 30;      // receita trend (-20..+20%)
+    s += clamp((-d.delta.cpl + 20) / 40, 0, 1) * 20;         // CPL trend (down = good)
+    s = Math.round(clamp(s, 0, 100));
+    const label = s >= 75 ? "Excelente" : s >= 55 ? "Saudável" : s >= 40 ? "Requer atenção" : "Crítico";
+    const color = s >= 75 ? "#21bfa0" : s >= 55 ? "#3b9cf6" : s >= 40 ? "#f5ae39" : "#f1564f";
+    return { score: s, label, color };
+  }
+
+  function analyze(d) {
+    const out = computeInsights(d).slice(); // base 4
+    // funnel leak — which stage is weakest vs benchmark
+    if (d.ctr < 0.016) {
+      out.push({ kind: "warn", chip: "Funil", chipCls: "chip-warn", t: "CTR abaixo do esperado",
+        b: `CTR de <b>${(d.ctr * 100).toFixed(2).replace(".", ",")}%</b> (alvo ~1,8%). Os criativos não estão atraindo cliques — teste novas variações de anúncio e chamadas.` });
+    }
+    if (d.convLead < 0.08) {
+      out.push({ kind: "warn", chip: "Funil", chipCls: "chip-warn", t: "Conversão clique→lead baixa",
+        b: `Apenas <b>${(d.convLead * 100).toFixed(1).replace(".", ",")}%</b> dos cliques viram lead. Gargalo na landing page — revise oferta, formulário e velocidade.` });
+    } else {
+      out.push({ kind: "good", chip: "Funil", chipCls: "chip-good", t: "Conversão de leads saudável",
+        b: `<b>${(d.convLead * 100).toFixed(1).replace(".", ",")}%</b> dos cliques viram lead, acima da média. Landing page convertendo bem.` });
+    }
+    // CPL standing
+    out.push({ kind: d.delta.cpl < 0 ? "good" : "info", chip: "Eficiência", chipCls: "chip-info", t: "Custo por lead",
+      b: `CPL atual <b>${cf2.format(d.cpl)}</b>, ${d.delta.cpl < 0 ? "abaixo" : "acima"} do período anterior (${d.delta.cpl >= 0 ? "+" : ""}${d.delta.cpl.toFixed(1).replace(".", ",")}%). ${d.delta.cpl < 0 ? "Eficiência ganhando — escale com segurança." : "Otimize segmentação para conter o CPL."}` });
+    return out;
+  }
+
+  function aiAnswer(q, d) {
+    q = (q || "").toLowerCase();
+    const best = d.campaigns[0], worst = [...d.campaigns].sort((a, b) => a.roas - b.roas)[0], top = d.channels[0];
+    const pct = (v) => (v >= 0 ? "+" : "") + v.toFixed(1).replace(".", ",") + "%";
+    if (/roas|retorno/.test(q)) return `ROAS do período: <b>${d.roas.toFixed(2).replace(".", ",")}x</b> (${pct(d.delta.roas)} vs. anterior). Cada R$1 investido retorna <b>${d.roas.toFixed(2).replace(".", ",")}</b> em receita. ${d.roas >= 4 ? "Acima do saudável (4x)." : "Abaixo de 4x — revise campanhas de baixo retorno."}`;
+    if (/cpl|custo por lead|custo/.test(q)) return `CPL atual: <b>${cf2.format(d.cpl)}</b> (${pct(d.delta.cpl)}). ${d.delta.cpl < 0 ? "Caindo — boa eficiência." : "Subindo — foque em segmentação e criativos."} Para reduzir, comece pausando <b>${worst.name}</b> (ROAS ${worst.roas.toFixed(2).replace(".", ",")}x).`;
+    if (/receita|faturamento/.test(q)) return `Receita: <b>${brl(d.receita)}</b> (${pct(d.delta.receita)} vs. anterior), sobre <b>${brl(d.invest)}</b> de investimento.`;
+    if (/invest|gasto|orçamento/.test(q)) return `Investimento: <b>${brl(d.invest)}</b> (${pct(d.delta.invest)}). Maior canal: <b>${top.name}</b> com ${(top.share * 100).toFixed(0)}%.`;
+    if (/escal|aumentar|melhor campanha|crescer/.test(q)) return `Escale <b>${best.name}</b> — melhor ROAS (<b>${best.roas.toFixed(2).replace(".", ",")}x</b>). Realocar ~15% do orçamento das piores campanhas pode somar até <b>${brl(best.receita * 0.15)}</b> em receita.`;
+    if (/pior|pausar|cortar|reduzir/.test(q)) return `Pior campanha: <b>${worst.name}</b> (ROAS ${worst.roas.toFixed(2).replace(".", ",")}x). Pausar libera <b>${brl(worst.invest)}</b> para realocação.`;
+    if (/canal|canais|meta|google|tiktok/.test(q)) return `Top canal: <b>${top.name}</b> (${(top.share * 100).toFixed(0)}% do investimento, ${brl(top.value)}). Diversificar reduz dependência e pode achar público de CPL menor.`;
+    if (/lead/.test(q)) return `Leads no período: <b>${nf.format(Math.round(d.leads))}</b>. Conversão clique→lead: <b>${(d.convLead * 100).toFixed(1).replace(".", ",")}%</b>. CPL: <b>${cf2.format(d.cpl)}</b>.`;
+    if (/resumo|geral|como.*(vai|está)|panorama/.test(q)) { const ps = perfScore(d); return `Score de performance: <b>${ps.score}/100</b> (${ps.label}). ROAS <b>${d.roas.toFixed(2).replace(".", ",")}x</b>, receita ${pct(d.delta.receita)}, CPL ${pct(d.delta.cpl)}. Destaque: <b>${best.name}</b>. Atenção: <b>${worst.name}</b>.`; }
+    return `Posso analisar ROAS, CPL, receita, investimento, canais, leads e campanhas deste período. Ex: "qual campanha escalar?", "como reduzir o CPL?", "resumo do período".`;
+  }
+
+  const AI_SUGGEST = ["Resumo do período", "Como está meu ROAS?", "Qual campanha escalar?", "Onde reduzir o CPL?", "Qual o melhor canal?"];
+
+  function renderInsightsView() {
+    const d = withDeltas(state.clientId, state.range);
+    const ps = perfScore(d);
+    const client = (CLIENTS.find((c) => c.id === state.clientId) || CLIENTS[0]).name;
+    const cards = analyze(d).map((i) => `
+      <article class="ai-card is-${i.kind}">
+        <div class="ai-card__t">${i.t}<span class="insight__chip ${i.chipCls}">${i.chip}</span></div>
+        <div class="ai-card__b">${i.b}</div>
+      </article>`).join("");
+
+    const host = $("#view-generic");
+    host.innerHTML = `
+      <div class="ai">
+        <div class="ai-top">
+          <div class="panel ai-score" style="--sc:${ps.color}">
+            <div class="ai-score__ring" style="background:conic-gradient(${ps.color} ${ps.score * 3.6}deg, var(--surface-3) 0)">
+              <div class="ai-score__inner"><span class="ai-score__num">${ps.score}</span><span class="ai-score__den">/100</span></div>
+            </div>
+            <div class="ai-score__txt">
+              <div class="ai-score__label" style="color:${ps.color}">${ps.label}</div>
+              <div class="ai-score__sub">Score de performance · ${client} · ${state.range} dias</div>
+              <div class="ai-chips">
+                <span class="ai-chip"><b>${d.roas.toFixed(2).replace(".", ",")}x</b> ROAS</span>
+                <span class="ai-chip"><b>${cf2.format(d.cpl)}</b> CPL</span>
+                <span class="ai-chip ${d.delta.receita >= 0 ? "up" : "down"}"><b>${(d.delta.receita >= 0 ? "+" : "") + d.delta.receita.toFixed(1).replace(".", ",")}%</b> receita</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel ai-ask">
+            <div class="ai-ask__head"><span class="spark">✦</span> Pergunte à IA sobre este período</div>
+            <form class="ai-ask__form" id="aiAskForm">
+              <input id="aiAskInput" type="text" placeholder="Ex: qual campanha devo escalar?" autocomplete="off" />
+              <button class="btn btn--brand" type="submit" aria-label="Perguntar">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M5 12h14m0 0-6-6m6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+            </form>
+            <div class="ai-suggest" id="aiSuggest">${AI_SUGGEST.map((s) => `<button class="ai-sg" type="button">${s}</button>`).join("")}</div>
+            <div class="ai-answer" id="aiAnswer" hidden></div>
+          </div>
+        </div>
+
+        <h3 class="report__h" style="margin:8px 0 2px">Insights e recomendações</h3>
+        <div class="ai-grid">${cards}</div>
+      </div>`;
+
+    const ans = $("#aiAnswer");
+    const ask = (q) => {
+      $("#aiAskInput").value = q;
+      ans.hidden = false;
+      ans.innerHTML = `<div class="ai-answer__q">${q}</div><div class="ai-answer__a">${aiAnswer(q, d)}</div>`;
+      ans.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "nearest" });
+    };
+    $("#aiAskForm").addEventListener("submit", (e) => { e.preventDefault(); const q = $("#aiAskInput").value.trim(); if (q) ask(q); });
+    $$("#aiSuggest .ai-sg").forEach((b) => b.addEventListener("click", () => ask(b.textContent)));
+  }
+
   function renderEmptyView(view) {
     const host = $("#view-generic");
     const copy = {
@@ -1139,8 +1248,8 @@
     else if (view === "clientes") renderClientes();
     else if (view === "relatorios") renderRelatorios();
     else if (view === "planilha") renderPlanilha();
+    else if (view === "insights") renderInsightsView();
     else renderEmptyView(view);
-    if (view === "insights") openDrawer();
     closeNav();
     $("#main").scrollTo?.({ top: 0 });
     window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
