@@ -97,6 +97,14 @@
     { id: "ctr", label: "CTR" },
     { id: "leads", label: "Leads" },
     { id: "ticket", label: "Ticket médio" },
+    { id: "connect", label: "Connect Rate" },
+    { id: "custoResult", label: "Custo por resultado" },
+    { id: "cpm", label: "CPM" },
+    { id: "txconv", label: "Tx. conversão da página" },
+    { id: "vid25", label: "Vídeo assistido 25%" },
+    { id: "vid50", label: "Vídeo assistido 50%" },
+    { id: "vid70", label: "Vídeo assistido 70%" },
+    { id: "seguidores", label: "Seguidores" },
   ];
 
   /* ---------- state ---------- */
@@ -146,6 +154,18 @@
     const cpa = cpl * (3.2 + rand() * 1.4);
     const ticket = receita / (leads * (0.22 + rand() * 0.05)); // avg ticket per sale
 
+    // extra ad metrics
+    const connectRate = 0.84 + rand() * 0.12;                 // 84–96% click→landing
+    const pageViews = cliques * connectRate;
+    const resultados = Math.max(1, leads * (0.5 + rand() * 0.28)); // results (sales/conv) < leads
+    const custoResultado = invest / resultados;
+    const cpm = (invest / impressoes) * 1000;                  // cost per 1000 impressions
+    const txConvPagina = leads / pageViews;                    // landing-page conversion rate
+    const v25 = 0.55 + rand() * 0.22;                          // % reached 25% of video
+    const v50 = v25 * (0.6 + rand() * 0.15);
+    const v70 = v50 * (0.55 + rand() * 0.18);
+    const seguidores = Math.round((3200 + rand() * 14000) * client.scale + 600);
+
     // channels split (slightly perturbed per client)
     const channels = CHANNELS.map((ch) => {
       const w = ch.w * (0.85 + rand() * 0.3);
@@ -162,7 +182,9 @@
       return { name, color: CHANNELS[i % CHANNELS.length].color, invest: inv, receita: inv * r, roas: r };
     }).sort((a, b) => b.roas - a.roas).slice(0, 5);
 
-    return { client, series, invest, receita, roas, impressoes, cliques, leads, ctr, convLead, cpl, cpa, ticket, channels, campaigns };
+    return { client, series, invest, receita, roas, impressoes, cliques, leads, ctr, convLead, cpl, cpa, ticket,
+      connectRate, pageViews, resultados, custoResultado, cpm, txConvPagina, v25, v50, v70, seguidores,
+      channels, campaigns };
   }
 
   function withDeltas(clientId, range) {
@@ -178,6 +200,14 @@
       ctr: pct(cur.ctr, prev.ctr),
       leads: pct(cur.leads, prev.leads),
       ticket: pct(cur.ticket, prev.ticket),
+      connectRate: pct(cur.connectRate, prev.connectRate),
+      custoResultado: pct(cur.custoResultado, prev.custoResultado),
+      cpm: pct(cur.cpm, prev.cpm),
+      txConvPagina: pct(cur.txConvPagina, prev.txConvPagina),
+      v25: pct(cur.v25, prev.v25),
+      v50: pct(cur.v50, prev.v50),
+      v70: pct(cur.v70, prev.v70),
+      seguidores: pct(cur.seguidores, prev.seguidores),
     };
     return cur;
   }
@@ -194,6 +224,14 @@
     ctr: { label: "CTR", fmt: (d) => (d.ctr * 100).toFixed(2).replace(".", ",") + "%", color: "#3b9cf6", deltaGood: "up", key: "ctr", spark: (d) => d.series.map((p) => p.receita / p.invest) },
     leads: { label: "Leads", fmt: (d) => nf.format(Math.round(d.leads)), color: "#21bfa0", deltaGood: "up", key: "leads", spark: (d) => d.series.map((p) => p.invest) },
     ticket: { label: "Ticket médio", fmt: (d) => brl(d.ticket), color: "#f5ae39", deltaGood: "up", key: "ticket", spark: (d) => d.series.map((p) => p.receita) },
+    connect: { label: "Connect Rate", fmt: (d) => (d.connectRate * 100).toFixed(1).replace(".", ",") + "%", color: "#3b9cf6", deltaGood: "up", key: "connectRate", spark: (d) => d.series.map((p) => p.receita) },
+    custoResult: { label: "Custo por resultado", fmt: (d) => cf2.format(d.custoResultado), color: "#e068d8", deltaGood: "down", key: "custoResultado", spark: (d) => d.series.map((p) => p.invest) },
+    cpm: { label: "CPM", fmt: (d) => cf2.format(d.cpm), color: "#f5ae39", deltaGood: "down", key: "cpm", spark: (d) => d.series.map((p) => p.invest) },
+    txconv: { label: "Tx. conversão da página", fmt: (d) => (d.txConvPagina * 100).toFixed(1).replace(".", ",") + "%", color: "#21bfa0", deltaGood: "up", key: "txConvPagina", spark: (d) => d.series.map((p) => p.receita) },
+    vid25: { label: "Vídeo assistido 25%", fmt: (d) => (d.v25 * 100).toFixed(0) + "%", color: "#7c5cff", deltaGood: "up", key: "v25", spark: (d) => d.series.map((p) => p.receita) },
+    vid50: { label: "Vídeo assistido 50%", fmt: (d) => (d.v50 * 100).toFixed(0) + "%", color: "#9d86ff", deltaGood: "up", key: "v50", spark: (d) => d.series.map((p) => p.receita) },
+    vid70: { label: "Vídeo assistido 70%", fmt: (d) => (d.v70 * 100).toFixed(0) + "%", color: "#b04dff", deltaGood: "up", key: "v70", spark: (d) => d.series.map((p) => p.receita) },
+    seguidores: { label: "Seguidores", fmt: (d) => nf.format(Math.round(d.seguidores)), color: "#0bc18d", deltaGood: "up", key: "seguidores", spark: (d) => d.series.map((p) => p.receita) },
   };
 
   // Geometry for the mini chart: line path + area path (filled to baseline).
