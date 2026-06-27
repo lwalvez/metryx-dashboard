@@ -1202,6 +1202,238 @@
     $$("#aiSuggest .ai-sg").forEach((b) => b.addEventListener("click", () => ask(b.textContent)));
   }
 
+  /* ============================================================
+     INTEGRAÇÕES — connect/disconnect ad sources (persisted)
+     ============================================================ */
+  const INTEGRATIONS = [
+    { id: "meta", name: "Meta Ads", desc: "Facebook e Instagram Ads", color: "#3b9cf6", ab: "Ma" },
+    { id: "google", name: "Google Ads", desc: "Search, Display e YouTube", color: "#21bfa0", ab: "G" },
+    { id: "tiktok", name: "TikTok Ads", desc: "Vídeo e feed For You", color: "#b04dff", ab: "Tt" },
+    { id: "linkedin", name: "LinkedIn Ads", desc: "Segmentação B2B", color: "#f5ae39", ab: "in" },
+    { id: "ga4", name: "Google Analytics 4", desc: "Eventos e conversões", color: "#e068d8", ab: "G4" },
+    { id: "webhook", name: "Webhook / API", desc: "Integração customizada", color: "#717a8c", ab: "{}" },
+  ];
+  function loadIntegrations() {
+    try { const s = JSON.parse(localStorage.getItem("metryx-integrations") || "null"); if (s) return s; } catch (_) {}
+    return { meta: { connected: true, since: Date.now() - 86400000 * 9 }, google: { connected: true, since: Date.now() - 86400000 * 3 } };
+  }
+  function saveIntegrations(o) { localStorage.setItem("metryx-integrations", JSON.stringify(o)); }
+
+  function renderIntegracoes() {
+    const st = loadIntegrations();
+    const connected = INTEGRATIONS.filter((i) => st[i.id]?.connected).length;
+    const cards = INTEGRATIONS.map((i) => {
+      const c = st[i.id]?.connected;
+      const since = st[i.id]?.since ? new Date(st[i.id].since).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }) : null;
+      return `<article class="intg ${c ? "is-on" : ""}">
+        <div class="intg__top">
+          <span class="intg__logo" style="background:color-mix(in srgb, ${i.color} 18%, transparent); color:${i.color}">${i.ab}</span>
+          <span class="intg__status ${c ? "on" : "off"}">${c ? "Conectado" : "Desconectado"}</span>
+        </div>
+        <div class="intg__name">${i.name}</div>
+        <div class="intg__desc">${i.desc}</div>
+        ${c && since ? `<div class="intg__since">Conectado desde ${since}</div>` : `<div class="intg__since">&nbsp;</div>`}
+        <button class="btn ${c ? "btn--ghost" : "btn--brand"} btn--block intg__btn" data-intg="${i.id}">${c ? "Desconectar" : "Conectar"}</button>
+      </article>`;
+    }).join("");
+    const host = $("#view-generic");
+    host.innerHTML = `
+      <div class="intg-wrap">
+        <p class="sec-sub"><b>${connected}</b> de ${INTEGRATIONS.length} fontes conectadas. Conecte suas contas de anúncio para sincronizar métricas.</p>
+        <div class="intg-grid">${cards}</div>
+      </div>`;
+    $$("[data-intg]", host).forEach((b) => b.addEventListener("click", () => {
+      const id = b.dataset.intg; const s = loadIntegrations();
+      const now = s[id]?.connected;
+      if (now) { if (!confirm("Desconectar " + INTEGRATIONS.find((x) => x.id === id).name + "?")) return; s[id] = { connected: false }; toast("Integração desconectada"); }
+      else { s[id] = { connected: true, since: Date.now() }; toast(INTEGRATIONS.find((x) => x.id === id).name + " conectado"); }
+      saveIntegrations(s); renderIntegracoes();
+    }));
+  }
+
+  /* ============================================================
+     ALERTAS — rules evaluated against current data (persisted)
+     ============================================================ */
+  const ALERT_METRICS = [
+    { id: "roas", label: "ROAS", get: (d) => d.roas, fmt: (v) => v.toFixed(2).replace(".", ",") + "x" },
+    { id: "cpl", label: "CPL", get: (d) => d.cpl, fmt: (v) => cf2.format(v) },
+    { id: "cpa", label: "CPA", get: (d) => d.cpa, fmt: (v) => cf2.format(v) },
+    { id: "ctr", label: "CTR (%)", get: (d) => d.ctr * 100, fmt: (v) => v.toFixed(2).replace(".", ",") + "%" },
+    { id: "invest", label: "Investimento", get: (d) => d.invest, fmt: (v) => brl(v) },
+    { id: "receita", label: "Receita", get: (d) => d.receita, fmt: (v) => brl(v) },
+    { id: "leads", label: "Leads", get: (d) => d.leads, fmt: (v) => nf.format(Math.round(v)) },
+  ];
+  function loadAlerts() {
+    try { const s = JSON.parse(localStorage.getItem("metryx-alerts") || "null"); if (Array.isArray(s)) return s; } catch (_) {}
+    return [
+      { id: "a1", metric: "cpl", op: ">", value: 30, enabled: true },
+      { id: "a2", metric: "roas", op: "<", value: 3, enabled: true },
+      { id: "a3", metric: "invest", op: ">", value: 8000, enabled: true },
+    ];
+  }
+  function saveAlerts(a) { localStorage.setItem("metryx-alerts", JSON.stringify(a)); }
+  function alertFires(rule, d) {
+    const m = ALERT_METRICS.find((x) => x.id === rule.metric); if (!m) return false;
+    const v = m.get(d); return rule.op === ">" ? v > rule.value : v < rule.value;
+  }
+  function evalAlerts(d) {
+    return loadAlerts().filter((r) => r.enabled && alertFires(r, d));
+  }
+  function updateAlertBadge() {
+    const badge = $("#alertCount"); if (!badge) return;
+    const d = withDeltas(state.clientId, state.range);
+    const n = evalAlerts(d).length;
+    badge.textContent = n;
+    badge.style.display = n ? "" : "none";
+  }
+  function alertRuleText(r) {
+    const m = ALERT_METRICS.find((x) => x.id === r.metric);
+    const val = r.metric === "invest" || r.metric === "receita" ? brl(r.value) : r.metric === "ctr" ? r.value + "%" : r.metric === "roas" ? r.value + "x" : r.metric === "cpl" || r.metric === "cpa" ? cf2.format(r.value) : nf.format(r.value);
+    return `${m ? m.label : r.metric} ${r.op} ${val}`;
+  }
+
+  function renderAlertas() {
+    const d = withDeltas(state.clientId, state.range);
+    const rules = loadAlerts();
+    const fired = rules.filter((r) => r.enabled && alertFires(r, d));
+    const client = (CLIENTS.find((c) => c.id === state.clientId) || CLIENTS[0]).name;
+
+    const activeHTML = fired.length ? fired.map((r) => {
+      const m = ALERT_METRICS.find((x) => x.id === r.metric);
+      return `<div class="al-fire">
+        <span class="al-fire__ico"><svg viewBox="0 0 24 24" width="18" height="18" fill="none"><path d="M12 9v4m0 3v.5M10.3 4.3 2.5 18a1 1 0 0 0 .9 1.5h17.2a1 1 0 0 0 .9-1.5L13.7 4.3a1 1 0 0 0-1.7 0Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <div><div class="al-fire__t">${alertRuleText(r)}</div><div class="al-fire__m">Valor atual: <b>${m.fmt(m.get(d))}</b> · ${client} · ${state.range} dias</div></div>
+      </div>`;
+    }).join("") : `<div class="al-ok"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"><path d="m5 12 4 4L19 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg> Nenhum alerta disparado neste período. Tudo dentro das metas.</div>`;
+
+    const rulesHTML = rules.map((r) => {
+      const m = ALERT_METRICS.find((x) => x.id === r.metric);
+      const on = r.enabled && alertFires(r, d);
+      return `<div class="al-rule ${r.enabled ? "" : "is-off"}" data-rule="${r.id}">
+        <span class="al-rule__dot ${on ? "fire" : r.enabled ? "ok" : "muted"}"></span>
+        <span class="al-rule__txt">${alertRuleText(r)} <small>${m.label} atual: ${m.fmt(m.get(d))}</small></span>
+        <span class="switch"><input type="checkbox" data-toggle="${r.id}" ${r.enabled ? "checked" : ""}/><span class="switch__track"><span class="switch__thumb"></span></span></span>
+        <button class="cc-act cc-act--danger" data-del="${r.id}" aria-label="Excluir" title="Excluir"><svg viewBox="0 0 24 24" width="15" height="15" fill="none"><path d="M5 7h14M10 7V5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2M6 7l1 12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>`;
+    }).join("");
+
+    const host = $("#view-generic");
+    host.innerHTML = `
+      <div class="al">
+        <section class="panel">
+          <h3 class="report__h" style="margin:0 0 14px">Alertas ativos${fired.length ? ` · ${fired.length}` : ""}</h3>
+          <div class="al-fires">${activeHTML}</div>
+        </section>
+
+        <section class="panel">
+          <h3 class="report__h" style="margin:0 0 14px">Regras de alerta</h3>
+          <div class="al-rules">${rulesHTML || `<p class="sec-sub">Nenhuma regra. Crie a primeira abaixo.</p>`}</div>
+          <form class="al-new" id="alForm">
+            <select id="alMetric" class="rep-select">${ALERT_METRICS.map((m) => `<option value="${m.id}">${m.label}</option>`).join("")}</select>
+            <select id="alOp" class="rep-select"><option value=">">maior que &gt;</option><option value="<">menor que &lt;</option></select>
+            <input id="alValue" type="number" step="any" placeholder="Valor" />
+            <button class="btn btn--brand" type="submit"><svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> Adicionar regra</button>
+          </form>
+        </section>
+      </div>`;
+
+    $$("[data-toggle]", host).forEach((cb) => cb.addEventListener("change", () => {
+      const a = loadAlerts(); const r = a.find((x) => x.id === cb.dataset.toggle); if (r) r.enabled = cb.checked;
+      saveAlerts(a); updateAlertBadge(); renderAlertas();
+    }));
+    $$("[data-del]", host).forEach((b) => b.addEventListener("click", () => {
+      saveAlerts(loadAlerts().filter((x) => x.id !== b.dataset.del)); updateAlertBadge(); renderAlertas(); toast("Regra removida");
+    }));
+    $("#alForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const v = parseFloat($("#alValue").value);
+      if (!isFinite(v)) { toast("Informe um valor", false); return; }
+      const a = loadAlerts();
+      a.push({ id: "a" + Date.now(), metric: $("#alMetric").value, op: $("#alOp").value, value: v, enabled: true });
+      saveAlerts(a); updateAlertBadge(); renderAlertas(); toast("Regra criada");
+    });
+  }
+
+  /* ============================================================
+     CONFIGURAÇÕES — profile, preferences, data (persisted)
+     ============================================================ */
+  function loadSettings() { try { return JSON.parse(localStorage.getItem("metryx-settings") || "{}") || {}; } catch (_) { return {}; } }
+  function saveSettings(s) { localStorage.setItem("metryx-settings", JSON.stringify(s)); }
+
+  function renderConfig() {
+    const s = loadSettings();
+    const sess = window.MetryxAuth ? window.MetryxAuth.getSession() : null;
+    const user = sess && sess.user || {};
+    const email = user.email || "—";
+    const name = s.name || (user.user_metadata && (user.user_metadata.full_name || user.user_metadata.name)) || (email !== "—" ? email.split("@")[0] : "Usuário");
+
+    const host = $("#view-generic");
+    host.innerHTML = `
+      <div class="cfg">
+        <section class="panel cfg-sec">
+          <h3 class="report__h">Perfil</h3>
+          <div class="cfg-row"><label for="cfgName">Nome</label><input id="cfgName" type="text" value="${(name || "").replace(/"/g, "&quot;")}" maxlength="60"/></div>
+          <div class="cfg-row"><label for="cfgCompany">Empresa</label><input id="cfgCompany" type="text" value="${(s.company || "").replace(/"/g, "&quot;")}" placeholder="Nome da sua empresa" maxlength="60"/></div>
+          <div class="cfg-row"><label>E-mail</label><input type="email" value="${email}" disabled/></div>
+        </section>
+
+        <section class="panel cfg-sec">
+          <h3 class="report__h">Preferências</h3>
+          <div class="cfg-row cfg-row--inline"><span>Tema</span>
+            <div class="segmented" id="cfgTheme"><button class="seg ${state.theme === "dark" ? "is-active" : ""}" data-theme="dark">Escuro</button><button class="seg ${state.theme === "light" ? "is-active" : ""}" data-theme="light">Claro</button></div>
+          </div>
+          <div class="cfg-row cfg-row--inline"><span>Período padrão</span>
+            <select id="cfgRange" class="rep-select"><option value="7" ${(+s.defaultRange || 7) === 7 ? "selected" : ""}>7 dias</option><option value="30" ${+s.defaultRange === 30 ? "selected" : ""}>30 dias</option><option value="90" ${+s.defaultRange === 90 ? "selected" : ""}>90 dias</option></select>
+          </div>
+          <div class="cfg-row cfg-row--inline"><span>Mini gráfico nos cards</span>
+            <span class="switch"><input type="checkbox" id="cfgMini" ${state.miniChart ? "checked" : ""}/><span class="switch__track"><span class="switch__thumb"></span></span></span>
+          </div>
+          <div class="cfg-row cfg-row--inline"><span>Notificações por e-mail</span>
+            <span class="switch"><input type="checkbox" id="cfgEmail" ${s.emailNotif !== false ? "checked" : ""}/><span class="switch__track"><span class="switch__thumb"></span></span></span>
+          </div>
+        </section>
+
+        <section class="panel cfg-sec">
+          <h3 class="report__h">Conta</h3>
+          <div class="cfg-actions">
+            <button class="btn btn--brand" id="cfgSave">Salvar alterações</button>
+            <button class="btn btn--ghost" id="cfgLogout">Sair da conta</button>
+          </div>
+          <div class="cfg-danger">
+            <div><div class="cfg-danger__t">Limpar dados locais</div><div class="cfg-danger__d">Remove clientes, planilhas, relatórios, alertas e preferências salvos neste navegador. Não afeta sua conta.</div></div>
+            <button class="btn cfg-danger__btn" id="cfgClear">Limpar dados</button>
+          </div>
+        </section>
+      </div>`;
+
+    $$("#cfgTheme .seg", host).forEach((b) => b.addEventListener("click", () => {
+      if (state.theme !== b.dataset.theme) toggleTheme();
+      $$("#cfgTheme .seg").forEach((x) => x.classList.toggle("is-active", x.dataset.theme === state.theme));
+    }));
+    $("#cfgMini").addEventListener("change", (e) => {
+      state.miniChart = e.target.checked; localStorage.setItem("metryx-minichart", state.miniChart ? "1" : "0");
+      buildMetricsMenu();
+    });
+    $("#cfgSave").addEventListener("click", () => {
+      const st = loadSettings();
+      st.name = $("#cfgName").value.trim();
+      st.company = $("#cfgCompany").value.trim();
+      st.defaultRange = +$("#cfgRange").value;
+      st.emailNotif = $("#cfgEmail").checked;
+      saveSettings(st);
+      const av = $("#avatarBtn"); if (av && st.name) av.textContent = st.name.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+      const dn = $("#ddName"); if (dn && st.name) dn.textContent = st.name;
+      toast("Configurações salvas");
+    });
+    $("#cfgLogout").addEventListener("click", () => { if (window.MetryxAuth) window.MetryxAuth.signOut(); });
+    $("#cfgClear").addEventListener("click", () => {
+      if (!confirm("Limpar todos os dados locais do Metryx? Isso não pode ser desfeito.")) return;
+      Object.keys(localStorage).filter((k) => k.indexOf("metryx-") === 0 && k !== "metryx-session").forEach((k) => localStorage.removeItem(k));
+      toast("Dados locais limpos");
+      setTimeout(() => location.reload(), 700);
+    });
+  }
+
   function renderEmptyView(view) {
     const host = $("#view-generic");
     const copy = {
@@ -1249,6 +1481,9 @@
     else if (view === "relatorios") renderRelatorios();
     else if (view === "planilha") renderPlanilha();
     else if (view === "insights") renderInsightsView();
+    else if (view === "integracoes") renderIntegracoes();
+    else if (view === "alertas") renderAlertas();
+    else if (view === "config") renderConfig();
     else renderEmptyView(view);
     closeNav();
     $("#main").scrollTo?.({ top: 0 });
@@ -1261,6 +1496,7 @@
     $("#clientLabel").textContent = c.name;
     $("#subClient").textContent = c.name;
     buildClientMenu();
+    updateAlertBadge();
     if (state.view === "dashboard") renderDashboard();
   }
 
@@ -1268,6 +1504,7 @@
     state.range = r;
     $$("#rangeSeg .seg").forEach((s) => s.classList.toggle("is-active", +s.dataset.range === r));
     $("#subRange").textContent = "últimos " + r + " dias";
+    updateAlertBadge();
     if (state.view === "dashboard") renderDashboard();
     else if (state.view === "clientes") renderClientes();
   }
@@ -1505,6 +1742,7 @@
   /* ---------- init ---------- */
   function init() {
     readURL();
+    if (!new URLSearchParams(location.search).has("range")) { const dr = +loadSettings().defaultRange; if ([7, 30, 90].includes(dr)) state.range = dr; }
     applyTheme();
     buildClientMenu();
     buildMetricsMenu();
