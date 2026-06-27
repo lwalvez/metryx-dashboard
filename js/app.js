@@ -741,7 +741,30 @@
      RELATÓRIOS — functional report builder + PDF/PNG export
      ============================================================ */
   const REPORT_METRICS = ["invest", "receita", "roas", "cpl", "leads", "ticket"];
-  const reportCfg = { clientId: state.clientId, range: state.range, title: "Relatório de performance" };
+  function loadManualReport() {
+    try {
+      const m = JSON.parse(localStorage.getItem("metryx-report-manual") || "null");
+      if (m && Array.isArray(m.kpis)) {
+        return {
+          notes: String(m.notes || ""),
+          kpis: m.kpis.slice(0, 12).map((k) => ({ label: String(k.label || ""), value: String(k.value || ""), delta: String(k.delta || "") })),
+        };
+      }
+    } catch (_) {}
+    return { notes: "", kpis: [
+      { label: "Investimento", value: "", delta: "" },
+      { label: "Receita", value: "", delta: "" },
+      { label: "ROAS", value: "", delta: "" },
+      { label: "Leads", value: "", delta: "" },
+    ] };
+  }
+  function saveManualReport() { try { localStorage.setItem("metryx-report-manual", JSON.stringify(reportCfg.manual)); } catch (_) {} }
+
+  const reportCfg = {
+    clientId: state.clientId, range: state.range, title: "Relatório de performance",
+    mode: localStorage.getItem("metryx-report-mode") === "manual" ? "manual" : "auto",
+    manual: loadManualReport(),
+  };
 
   function loadReports() { try { return JSON.parse(localStorage.getItem("metryx-reports") || "[]"); } catch (_) { return []; } }
   function saveReports(list) { localStorage.setItem("metryx-reports", JSON.stringify(list)); }
@@ -761,7 +784,45 @@
     </div>`;
   }
 
+  const escHTML = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  function manualReportHTML(cfg) {
+    const client = (CLIENTS.find((c) => c.id === cfg.clientId) || CLIENTS[0]).name;
+    const now = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+    const m = cfg.manual || { kpis: [], notes: "" };
+    const kpis = m.kpis.filter((k) => (k.label || "").trim() || (k.value || "").trim()).map((k) => {
+      const dv = parseFloat(String(k.delta).replace(",", "."));
+      const hasD = String(k.delta || "").trim() !== "" && isFinite(dv);
+      const up = dv >= 0;
+      return `<div class="report-kpi" style="--mc:#7c5cff">
+        <div class="report-kpi__l">${escHTML(k.label)}</div>
+        <div class="report-kpi__v">${escHTML(k.value) || "—"}</div>
+        ${hasD ? `<div class="report-kpi__d ${up ? "is-up" : "is-down"}">
+          <svg viewBox="0 0 20 20" width="12" height="12" fill="none"><path d="${up ? "M5 12l5-5 5 5" : "M5 8l5 5 5-5"}" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          ${Math.abs(dv).toFixed(1).replace(".", ",")}% vs. anterior</div>` : ""}
+      </div>`;
+    }).join("") || `<p class="rep-empty">Adicione indicadores no editor acima.</p>`;
+    const notes = escHTML(m.notes).replace(/\n/g, "<br>");
+    return `
+      <div class="report" id="reportArea">
+        <header class="report__head">
+          <div class="report__brand">
+            <span class="brand-mark" style="background:#7c5cff"><svg viewBox="0 0 24 24" width="18" height="18" fill="none"><path d="M3 17 9 11l4 4 8-8" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M21 7v5M21 7h-5" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <div>
+              <div class="report__title">${escHTML(cfg.title) || "Relatório manual"}</div>
+              <div class="report__meta">${client} · últimos ${cfg.range} dias</div>
+            </div>
+          </div>
+          <div class="report__date">Gerado em<br><b>${now}</b></div>
+        </header>
+        <div class="report__kpis">${kpis}</div>
+        ${m.notes && m.notes.trim() ? `<section class="report__sec"><h3 class="report__h">Observações</h3><p class="rep-notes">${notes}</p></section>` : ""}
+        <footer class="report__foot">Metryx · Relatório manual · ${now}</footer>
+      </div>`;
+  }
+
   function reportHTML(cfg) {
+    if (cfg.mode === "manual") return manualReportHTML(cfg);
     const d = withDeltas(cfg.clientId, cfg.range);
     const client = (CLIENTS.find((c) => c.id === cfg.clientId) || CLIENTS[0]).name;
     const now = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
@@ -876,7 +937,12 @@
   function persistCurrentReport() {
     const list = loadReports();
     const client = (CLIENTS.find((c) => c.id === reportCfg.clientId) || CLIENTS[0]).name;
-    list.unshift({ id: "r" + Date.now(), title: reportCfg.title || "Relatório", clientId: reportCfg.clientId, clientName: client, range: reportCfg.range, date: new Date().toISOString() });
+    list.unshift({
+      id: "r" + Date.now(), title: reportCfg.title || "Relatório", clientId: reportCfg.clientId, clientName: client,
+      range: reportCfg.range, mode: reportCfg.mode,
+      manual: reportCfg.mode === "manual" ? JSON.parse(JSON.stringify(reportCfg.manual)) : null,
+      date: new Date().toISOString(),
+    });
     saveReports(list.slice(0, 30));
     renderSavedReports();
     toast("Relatório salvo");
@@ -900,7 +966,10 @@
         const r = loadReports().find((x) => x.id === it.dataset.open);
         if (!r) return;
         reportCfg.clientId = r.clientId; reportCfg.range = r.range; reportCfg.title = r.title;
+        reportCfg.mode = r.mode === "manual" ? "manual" : "auto";
+        if (r.mode === "manual" && r.manual && Array.isArray(r.manual.kpis)) reportCfg.manual = r.manual;
         syncReportControls();
+        renderManualEditor();
         generateReport();
         $("#reportPreview").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
       };
@@ -919,6 +988,39 @@
     const t = $("#repTitle"); if (t) t.value = reportCfg.title;
     const sel = $("#repClient"); if (sel) sel.value = reportCfg.clientId;
     $$("#repRange .seg").forEach((s) => s.classList.toggle("is-active", +s.dataset.range === reportCfg.range));
+    $$("#repMode .seg").forEach((s) => s.classList.toggle("is-active", s.dataset.mode === reportCfg.mode));
+    const ed = $("#repManualEditor"); if (ed) ed.hidden = reportCfg.mode !== "manual";
+    const nt = $("#repManualNotes"); if (nt) nt.value = reportCfg.manual.notes || "";
+  }
+
+  function manualKpiRowHTML(k, i) {
+    const a = (v) => String(v || "").replace(/"/g, "&quot;");
+    return `<div class="mr-row" data-i="${i}">
+      <input class="mr-in" data-f="label" value="${a(k.label)}" placeholder="Indicador (ex: Receita)" />
+      <input class="mr-in" data-f="value" value="${a(k.value)}" placeholder="Valor (ex: R$ 12.000)" />
+      <input class="mr-in mr-in--sm" data-f="delta" value="${a(k.delta)}" placeholder="% ant." />
+      <button class="cc-act cc-act--danger mr-del" data-mdel="${i}" aria-label="Remover indicador" title="Remover">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none"><path d="M5 7h14M10 7V5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2M6 7l1 12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>`;
+  }
+
+  function renderManualEditor() {
+    const host = $("#repManualBody");
+    if (!host) return;
+    host.innerHTML = reportCfg.manual.kpis.map((k, i) => manualKpiRowHTML(k, i)).join("")
+      || `<p class="rep-empty">Nenhum indicador. Clique em "+ Indicador".</p>`;
+    $$(".mr-row", host).forEach((row) => {
+      const i = +row.dataset.i;
+      $$("[data-f]", row).forEach((inp) => inp.addEventListener("input", () => {
+        reportCfg.manual.kpis[i][inp.dataset.f] = inp.value;
+        saveManualReport(); generateReport();
+      }));
+      const del = $("[data-mdel]", row);
+      if (del) del.addEventListener("click", () => {
+        reportCfg.manual.kpis.splice(i, 1); saveManualReport(); renderManualEditor(); generateReport();
+      });
+    });
   }
 
   function renderRelatorios() {
@@ -942,10 +1044,29 @@
               <button class="seg ${reportCfg.range === 90 ? "is-active" : ""}" data-range="90">90 dias</button>
             </div>
           </div>
+          <div class="rep-ctl">
+            <label>Modo</label>
+            <div class="segmented" id="repMode">
+              <button class="seg ${reportCfg.mode === "auto" ? "is-active" : ""}" data-mode="auto">Automático</button>
+              <button class="seg ${reportCfg.mode === "manual" ? "is-active" : ""}" data-mode="manual">Manual</button>
+            </div>
+          </div>
           <button class="btn btn--brand" id="repGen">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M5 12h14M12 5v14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
             Gerar relatório
           </button>
+        </div>
+
+        <div class="panel rep-manual" id="repManualEditor" ${reportCfg.mode === "manual" ? "" : "hidden"}>
+          <div class="rep-manual__head">
+            <h3 class="report__h" style="margin:0">Indicadores manuais</h3>
+            <button class="btn btn--ghost" id="repManualAdd"><svg viewBox="0 0 24 24" width="15" height="15" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> Indicador</button>
+          </div>
+          <div id="repManualBody" class="rep-manual__rows"></div>
+          <label class="rep-ctl rep-manual__notes">
+            <span>Observações / resumo</span>
+            <textarea id="repManualNotes" rows="4" placeholder="Escreva o resumo do relatório…">${(reportCfg.manual.notes || "").replace(/</g, "&lt;")}</textarea>
+          </label>
         </div>
 
         <div class="rep-actions">
@@ -978,6 +1099,24 @@
     $("#repShare").addEventListener("click", () => {
       const url = location.href.split("#")[0].split("?")[0] + "?client=" + reportCfg.clientId + "&range=" + reportCfg.range;
       (navigator.clipboard?.writeText(url) || Promise.reject()).then(() => toast("Link do relatório copiado")).catch(() => toast("Link: " + url));
+    });
+
+    // manual report mode
+    renderManualEditor();
+    $$("#repMode .seg").forEach((s) => s.addEventListener("click", () => {
+      reportCfg.mode = s.dataset.mode === "manual" ? "manual" : "auto";
+      try { localStorage.setItem("metryx-report-mode", reportCfg.mode); } catch (_) {}
+      $$("#repMode .seg").forEach((x) => x.classList.toggle("is-active", x.dataset.mode === reportCfg.mode));
+      const ed = $("#repManualEditor"); if (ed) ed.hidden = reportCfg.mode !== "manual";
+      generateReport();
+    }));
+    $("#repManualAdd").addEventListener("click", () => {
+      if (reportCfg.manual.kpis.length >= 12) { toast("Máximo de 12 indicadores", false); return; }
+      reportCfg.manual.kpis.push({ label: "", value: "", delta: "" });
+      saveManualReport(); renderManualEditor(); generateReport();
+    });
+    $("#repManualNotes").addEventListener("input", (e) => {
+      reportCfg.manual.notes = e.target.value; saveManualReport(); generateReport();
     });
   }
 

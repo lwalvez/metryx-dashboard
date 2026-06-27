@@ -751,3 +751,18 @@ html.dark .cfg-row input { background: #0e131c; }
 .shot-opt:hover { background: var(--surface-2); }
 .shot-opt input { width: 15px; height: 15px; accent-color: var(--brand); cursor: pointer; }
 #shotGo { width: 100%; margin-top: 8px; justify-content: center; }
+
+/* Manual report editor */
+.rep-manual { margin-top: 12px; }
+.rep-manual__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.rep-manual__rows { display: flex; flex-direction: column; gap: 8px; }
+.mr-row { display: grid; grid-template-columns: 1.3fr 1fr 92px 38px; gap: 8px; align-items: center; }
+.mr-in { height: 38px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: inherit; font-size: .86rem; width: 100%; }
+.mr-in:focus { outline: none; border-color: var(--brand); }
+.mr-del { justify-self: center; }
+.rep-manual__notes { display: block; margin-top: 12px; }
+.rep-manual__notes > span { display: block; font-size: .8rem; color: var(--text-3); margin-bottom: 6px; }
+.rep-manual__notes textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: inherit; font: inherit; font-size: .88rem; resize: vertical; }
+.rep-manual__notes textarea:focus { outline: none; border-color: var(--brand); }
+.rep-notes { white-space: pre-wrap; line-height: 1.6; }
+@media (max-width: 560px) { .mr-row { grid-template-columns: 1fr 1fr; } .mr-del { grid-column: 2; justify-self: end; } }
