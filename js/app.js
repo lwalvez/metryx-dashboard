@@ -108,10 +108,16 @@
   ];
 
   /* ---------- state ---------- */
+  // Restore the last view / client / range so a reload (F5) keeps you where you
+  // were instead of snapping back to Dashboard · Todos · 7 dias.
+  const KNOWN_VIEWS = ["dashboard", "clientes", "relatorios", "planilha", "insights", "integracoes", "alertas", "config"];
+  const savedView = localStorage.getItem("metryx-view");
+  const savedClient = localStorage.getItem("metryx-client");
+  const savedRange = +localStorage.getItem("metryx-range");
   const state = {
-    view: "dashboard",
-    clientId: "all",
-    range: 7,
+    view: KNOWN_VIEWS.includes(savedView) ? savedView : "dashboard",
+    clientId: savedClient && CLIENTS.some((c) => c.id === savedClient) ? savedClient : "all",
+    range: [7, 30, 90].includes(savedRange) ? savedRange : 7,
     theme: localStorage.getItem("metryx-theme") || "dark",
     series: { receita: true, invest: true },
     metrics: JSON.parse(localStorage.getItem("metryx-metrics") || "null") || ["invest", "receita", "roas", "cpl"],
@@ -1529,6 +1535,7 @@
 
   function switchView(view) {
     state.view = view;
+    try { localStorage.setItem("metryx-view", view); } catch (_) {}
     $$(".nav__item").forEach((n) => n.classList.toggle("is-active", n.dataset.view === view));
     $("#viewTitle").textContent = VIEW_META[view]?.title || "Metryx";
     const isDash = view === "dashboard";
@@ -1551,6 +1558,7 @@
 
   function selectClient(id) {
     state.clientId = id;
+    try { localStorage.setItem("metryx-client", id); } catch (_) {}
     const c = CLIENTS.find((x) => x.id === id) || CLIENTS[0];
     $("#clientLabel").textContent = c.name;
     $("#subClient").textContent = c.name;
@@ -1561,6 +1569,7 @@
 
   function setRange(r) {
     state.range = r;
+    try { localStorage.setItem("metryx-range", String(r)); } catch (_) {}
     $$("#rangeSeg .seg").forEach((s) => s.classList.toggle("is-active", +s.dataset.range === r));
     $("#subRange").textContent = "últimos " + r + " dias";
     updateAlertBadge();
@@ -1823,7 +1832,11 @@
   /* ---------- init ---------- */
   function init() {
     readURL();
-    if (!new URLSearchParams(location.search).has("range")) { const dr = +loadSettings().defaultRange; if ([7, 30, 90].includes(dr)) state.range = dr; }
+    // Settings' default range only kicks in when neither the URL nor a saved
+    // range is present, so a reload keeps the range you last picked.
+    if (!new URLSearchParams(location.search).has("range") && ![7, 30, 90].includes(savedRange)) {
+      const dr = +loadSettings().defaultRange; if ([7, 30, 90].includes(dr)) state.range = dr;
+    }
     applyTheme();
     buildClientMenu();
     buildMetricsMenu();
@@ -1832,7 +1845,16 @@
     // sync controls to state
     selectClient(state.clientId);
     setRange(state.range);
-    renderDashboard();
+    switchView(state.view); // restore last view (not always dashboard)
+
+    // Flush the debounced sheet save if the page is closed/reloaded mid-edit,
+    // so the last typed value isn't lost inside the 350ms timer window.
+    window.addEventListener("pagehide", () => {
+      if (sheetSaveTimer) {
+        clearTimeout(sheetSaveTimer);
+        try { localStorage.setItem(sheetKey(sheetClientId), JSON.stringify(sheet)); } catch (_) {}
+      }
+    });
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
