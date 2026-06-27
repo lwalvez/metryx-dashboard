@@ -29,13 +29,57 @@
   const rng = (seed) => { let a = seed >>> 0; return () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
 
   /* ---------- domain config ---------- */
-  const CLIENTS = [
-    { id: "all", name: "Todos os clientes", color: "#7c5cff", scale: 1.0 },
+  const ALL_CLIENT = { id: "all", name: "Todos os clientes", color: "#7c5cff", scale: 1.0 };
+  const DEFAULT_CLIENTS = [
     { id: "alves", name: "Alves Performance", color: "#21bfa0", scale: 0.42 },
     { id: "nova", name: "Nova Estética", color: "#f5ae39", scale: 0.27 },
     { id: "prime", name: "Prime Imóveis", color: "#3b9cf6", scale: 0.31 },
     { id: "fit", name: "FitLab Academia", color: "#b04dff", scale: 0.18 },
   ];
+  const CLIENT_COLORS = ["#7c5cff", "#21bfa0", "#f5ae39", "#3b9cf6", "#b04dff", "#f1564f", "#e068d8", "#0bc18d"];
+
+  // CLIENTS keeps a stable array identity (mutated in place) so every
+  // closure that captured it stays valid. The "all" entry is fixed.
+  function loadUserClients() {
+    try {
+      const s = JSON.parse(localStorage.getItem("metryx-clients") || "null");
+      if (Array.isArray(s) && s.length) {
+        return s.filter((c) => c && c.id && c.id !== "all" && c.name)
+                .map((c) => ({ id: c.id, name: c.name, color: c.color || "#7c5cff", scale: typeof c.scale === "number" ? c.scale : 0.25 }));
+      }
+    } catch (_) {}
+    return DEFAULT_CLIENTS.map((c) => ({ ...c }));
+  }
+  const CLIENTS = [ALL_CLIENT, ...loadUserClients()];
+  function saveClients() { localStorage.setItem("metryx-clients", JSON.stringify(CLIENTS.slice(1))); }
+
+  function makeClientId(name) {
+    let base = (name || "cliente").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24) || "cliente";
+    let id = base, n = 2;
+    while (CLIENTS.some((c) => c.id === id)) id = base + "-" + n++;
+    return id;
+  }
+  function genScale(id) { const r = rng(seedFrom("scale:" + id))(); return +(0.14 + r * 0.34).toFixed(3); } // 0.14–0.48
+
+  function addClient(name, color) {
+    const id = makeClientId(name);
+    const c = { id, name: name.trim().slice(0, 40), color: color || CLIENT_COLORS[CLIENTS.length % CLIENT_COLORS.length], scale: genScale(id) };
+    CLIENTS.push(c); saveClients(); return c;
+  }
+  function updateClient(id, name, color) {
+    const c = CLIENTS.find((x) => x.id === id);
+    if (!c || id === "all") return;
+    if (name && name.trim()) c.name = name.trim().slice(0, 40);
+    if (color) c.color = color;
+    saveClients();
+  }
+  function deleteClient(id) {
+    const i = CLIENTS.findIndex((c) => c.id === id);
+    if (i < 1) return; // never the "all" entry
+    CLIENTS.splice(i, 1); saveClients();
+    if (state.clientId === id) selectClient("all");
+  }
   const CHANNELS = [
     { id: "meta", name: "Meta Ads", color: "#3b9cf6", w: 0.40 },
     { id: "google", name: "Google Ads", color: "#21bfa0", w: 0.31 },
@@ -423,14 +467,123 @@
     config: { title: "Configurações" },
   };
 
+  const clientInitials = (name) => (name || "?").trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+
+  /* ---------- client add/edit modal ---------- */
+  let clientModal = null;
+  function ensureClientModal() {
+    if (clientModal) return clientModal;
+    const wrap = el("div", "modal");
+    wrap.id = "clientModal";
+    wrap.setAttribute("aria-hidden", "true");
+    wrap.innerHTML = `
+      <div class="modal__scrim" data-close></div>
+      <div class="modal__card" role="dialog" aria-modal="true" aria-labelledby="cmTitle">
+        <header class="modal__head">
+          <h2 id="cmTitle" class="card__title">Novo cliente</h2>
+          <button class="icon-btn" data-close aria-label="Fechar">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
+        </header>
+        <form class="modal__body" id="clientForm" novalidate>
+          <div class="m-field">
+            <label for="cmName">Nome do cliente</label>
+            <input id="cmName" type="text" maxlength="40" autocomplete="off" placeholder="Ex: Alves Performance" />
+            <p class="m-err" id="cmErr" aria-live="polite"></p>
+          </div>
+          <div class="m-field">
+            <label>Cor de identificação</label>
+            <div class="swatches" id="cmSwatches" role="radiogroup" aria-label="Cor"></div>
+          </div>
+          <div class="modal__foot">
+            <button type="button" class="btn btn--ghost" data-close>Cancelar</button>
+            <button type="submit" class="btn btn--brand" id="cmSave">Salvar</button>
+          </div>
+        </form>
+      </div>`;
+    document.body.appendChild(wrap);
+
+    const sw = $("#cmSwatches", wrap);
+    sw.innerHTML = CLIENT_COLORS.map((c) => `<button type="button" class="swatch" role="radio" aria-checked="false" data-color="${c}" style="--sw:${c}" aria-label="Cor ${c}"></button>`).join("");
+    sw.addEventListener("click", (e) => {
+      const b = e.target.closest(".swatch");
+      if (!b) return;
+      $$(".swatch", sw).forEach((s) => { s.classList.remove("is-sel"); s.setAttribute("aria-checked", "false"); });
+      b.classList.add("is-sel"); b.setAttribute("aria-checked", "true");
+      clientModal.color = b.dataset.color;
+    });
+
+    wrap.addEventListener("click", (e) => { if (e.target.closest("[data-close]")) closeClientModal(); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && wrap.classList.contains("is-open")) closeClientModal(); });
+    $("#clientForm", wrap).addEventListener("submit", onClientSubmit);
+
+    clientModal = { wrap, name: $("#cmName", wrap), err: $("#cmErr", wrap), title: $("#cmTitle", wrap), swatches: sw, mode: "add", id: null, color: CLIENT_COLORS[0] };
+    return clientModal;
+  }
+  function selectModalColor(color) {
+    const m = clientModal;
+    m.color = color;
+    $$(".swatch", m.swatches).forEach((s) => {
+      const on = s.dataset.color === color;
+      s.classList.toggle("is-sel", on); s.setAttribute("aria-checked", on ? "true" : "false");
+    });
+  }
+  function openClientModal(mode, client) {
+    const m = ensureClientModal();
+    m.mode = mode;
+    m.id = client ? client.id : null;
+    m.title.textContent = mode === "edit" ? "Renomear cliente" : "Novo cliente";
+    m.name.value = client ? client.name : "";
+    m.err.textContent = "";
+    m.name.closest(".m-field").classList.remove("has-error");
+    selectModalColor(client ? client.color : CLIENT_COLORS[CLIENTS.length % CLIENT_COLORS.length]);
+    m.wrap.classList.add("is-open");
+    m.wrap.setAttribute("aria-hidden", "false");
+    setTimeout(() => m.name.focus(), 30);
+  }
+  function closeClientModal() {
+    if (!clientModal) return;
+    clientModal.wrap.classList.remove("is-open");
+    clientModal.wrap.setAttribute("aria-hidden", "true");
+  }
+  function onClientSubmit(e) {
+    e.preventDefault();
+    const m = clientModal;
+    const name = m.name.value.trim();
+    const field = m.name.closest(".m-field");
+    if (!name) { field.classList.add("has-error"); m.err.textContent = "Informe o nome do cliente."; m.name.focus(); return; }
+    const dup = CLIENTS.some((c) => c.id !== m.id && c.name.toLowerCase() === name.toLowerCase());
+    if (dup) { field.classList.add("has-error"); m.err.textContent = "Já existe um cliente com esse nome."; m.name.focus(); return; }
+
+    if (m.mode === "edit") {
+      updateClient(m.id, name, m.color);
+      if (state.clientId === m.id) selectClient(m.id); // refresh topbar labels
+      toast("Cliente atualizado");
+    } else {
+      addClient(name, m.color);
+      toast("Cliente adicionado");
+    }
+    buildClientMenu();
+    renderClientes();
+    closeClientModal();
+  }
+
   function renderClientes() {
     const host = $("#view-generic");
-    const cards = CLIENTS.filter((c) => c.id !== "all").map((c) => {
+    const list = CLIENTS.filter((c) => c.id !== "all");
+    const cards = list.map((c) => {
       const d = withDeltas(c.id, state.range);
-      const initials = c.name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
-      return `<article class="client-card" data-goto="${c.id}" role="button" tabindex="0">
+      return `<article class="client-card" data-goto="${c.id}" role="button" tabindex="0" aria-label="Abrir ${c.name}">
+        <div class="client-card__actions">
+          <button class="cc-act" data-edit="${c.id}" aria-label="Renomear ${c.name}" title="Renomear">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none"><path d="M4 20h4L18.5 9.5a2 2 0 0 0 0-2.8l-1.2-1.2a2 2 0 0 0-2.8 0L4 16v4Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="m13.5 6.5 4 4" stroke="currentColor" stroke-width="1.8"/></svg>
+          </button>
+          <button class="cc-act cc-act--danger" data-del="${c.id}" aria-label="Remover ${c.name}" title="Remover">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none"><path d="M5 7h14M10 7V5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2M6 7l1 12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
         <div class="client-card__top">
-          <span class="client-card__av" style="background:linear-gradient(135deg, ${c.color}, color-mix(in srgb, ${c.color} 55%, #000))">${initials}</span>
+          <span class="client-card__av" style="background:linear-gradient(135deg, ${c.color}, color-mix(in srgb, ${c.color} 55%, #000))">${clientInitials(c.name)}</span>
           <div><div class="client-card__name">${c.name}</div><div class="client-card__meta">ROAS ${d.roas.toFixed(2).replace(".", ",")}x · ${state.range} dias</div></div>
         </div>
         <div class="client-card__stats">
@@ -439,12 +592,44 @@
         </div>
       </article>`;
     }).join("");
-    host.innerHTML = `<div style="margin-top:4px"><p style="color:var(--text-2);font-size:.9rem;margin:0 0 4px">${CLIENTS.length - 1} clientes ativos. Clique para abrir o painel.</p><div class="client-grid">${cards}</div></div>`;
+    const addCard = `<button class="client-add" id="addClientCard">
+        <span class="client-add__ico"><svg viewBox="0 0 24 24" width="22" height="22" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+        Adicionar cliente
+      </button>`;
+    host.innerHTML = `
+      <div class="clientes">
+        <div class="clientes__head">
+          <p class="clientes__count">${list.length} cliente${list.length === 1 ? "" : "s"} ativo${list.length === 1 ? "" : "s"}. Clique num card para abrir o painel.</p>
+          <button class="btn btn--brand" id="addClientBtn">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            Adicionar cliente
+          </button>
+        </div>
+        <div class="client-grid">${cards}${addCard}</div>
+      </div>`;
+
     $$("[data-goto]", host).forEach((card) => {
       const go = () => { selectClient(card.dataset.goto); switchView("dashboard"); };
-      card.addEventListener("click", go);
+      card.addEventListener("click", (e) => { if (e.target.closest(".cc-act")) return; go(); });
       card.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
     });
+    $$("[data-edit]", host).forEach((b) => b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openClientModal("edit", CLIENTS.find((c) => c.id === b.dataset.edit));
+    }));
+    $$("[data-del]", host).forEach((b) => b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const c = CLIENTS.find((x) => x.id === b.dataset.del);
+      if (!c) return;
+      if (confirm(`Remover o cliente "${c.name}"? Esta ação não pode ser desfeita.`)) {
+        deleteClient(c.id);
+        buildClientMenu();
+        renderClientes();
+        toast("Cliente removido");
+      }
+    }));
+    $("#addClientBtn").addEventListener("click", () => openClientModal("add"));
+    $("#addClientCard").addEventListener("click", () => openClientModal("add"));
   }
 
   function renderEmptyView(view) {
