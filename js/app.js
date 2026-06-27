@@ -107,6 +107,7 @@
     theme: localStorage.getItem("metryx-theme") || "dark",
     series: { receita: true, invest: true },
     metrics: JSON.parse(localStorage.getItem("metryx-metrics") || "null") || ["invest", "receita", "roas", "cpl"],
+    miniChart: localStorage.getItem("metryx-minichart") !== "0", // showMiniChart, default on
   };
 
   /* ============================================================
@@ -195,42 +196,66 @@
     ticket: { label: "Ticket médio", fmt: (d) => brl(d.ticket), color: "#f5ae39", deltaGood: "up", key: "ticket", spark: (d) => d.series.map((p) => p.receita) },
   };
 
-  function sparkPath(values, w, h) {
-    const min = Math.min(...values), max = Math.max(...values);
-    const span = max - min || 1;
+  // Geometry for the mini chart: line path + area path (filled to baseline).
+  // viewBox is 0..w x 0..h; stroke kept constant via vector-effect at render.
+  function sparkGeo(values, w, h, pad) {
+    pad = pad == null ? 4 : pad;
+    const min = Math.min(...values), max = Math.max(...values), span = (max - min) || 1;
     const step = w / (values.length - 1 || 1);
-    return values.map((v, i) => `${i === 0 ? "M" : "L"}${(i * step).toFixed(1)} ${(h - ((v - min) / span) * (h - 4) - 2).toFixed(1)}`).join(" ");
+    const pts = values.map((v, i) => [i * step, h - pad - ((v - min) / span) * (h - pad * 2)]);
+    const line = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(2)} ${p[1].toFixed(2)}`).join(" ");
+    const area = `${line} L${w.toFixed(2)} ${h} L0 ${h} Z`;
+    return { line, area, last: pts[pts.length - 1] };
   }
 
   function renderKPIs(d) {
     const grid = $("#kpiGrid");
     grid.innerHTML = "";
+    const showChart = state.miniChart;
+    grid.classList.toggle("kpi-grid--nochart", !showChart);
     state.metrics.forEach((mId) => {
       const m = METRIC_DEFS[mId];
       if (!m) return;
       const dv = d.delta[m.key] ?? 0;
       const good = (m.deltaGood === "up" && dv >= 0) || (m.deltaGood === "down" && dv < 0);
       const arrow = dv >= 0 ? "M5 12l5-5 5 5" : "M5 8l5 5 5-5";
-      const vals = m.spark(d);
-      const card = el("article", "kpi");
+      const card = el("article", "kpi" + (showChart ? "" : " kpi--nochart"));
+
+      let chart = "";
+      if (showChart) {
+        const W = 100, H = 46;
+        const g = sparkGeo(m.spark(d), W, H, 5);
+        const gid = "kg-" + mId;
+        chart = `
+        <div class="kpi__chart">
+          <svg class="kpi__spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+            <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="${m.color}" stop-opacity="0.32"/>
+              <stop offset="100%" stop-color="${m.color}" stop-opacity="0"/>
+            </linearGradient></defs>
+            <path d="${g.area}" fill="url(#${gid})"/>
+            <path d="${g.line}" fill="none" stroke="${m.color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+          </svg>
+        </div>`;
+      }
+
       card.innerHTML = `
-        <div class="kpi__top">
-          <span class="kpi__label">${m.label}</span>
-          <span class="kpi__ico" style="background:color-mix(in srgb, ${m.color} 16%, transparent); color:${m.color}">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M4 18 10 12l3 3 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </span>
-        </div>
-        <div class="kpi__val">${m.fmt(d)}</div>
-        <div class="kpi__foot">
-          <span class="delta ${good ? "delta--up" : "delta--down"}">
-            <svg viewBox="0 0 20 20" width="13" height="13" fill="none"><path d="${arrow}" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            ${Math.abs(dv).toFixed(1).replace(".", ",")}%
-          </span>
-          <span>vs. período anterior</span>
-        </div>
-        <svg class="kpi__spark" viewBox="0 0 92 34" preserveAspectRatio="none" aria-hidden="true">
-          <path d="${sparkPath(vals, 92, 34)}" fill="none" stroke="${m.color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
-        </svg>`;
+        <div class="kpi__body">
+          <div class="kpi__top">
+            <span class="kpi__label">${m.label}</span>
+            <span class="kpi__ico" style="background:color-mix(in srgb, ${m.color} 16%, transparent); color:${m.color}">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M4 18 10 12l3 3 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </div>
+          <div class="kpi__val">${m.fmt(d)}</div>
+          <div class="kpi__foot">
+            <span class="delta ${good ? "delta--up" : "delta--down"}">
+              <svg viewBox="0 0 20 20" width="13" height="13" fill="none"><path d="${arrow}" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              ${Math.abs(dv).toFixed(1).replace(".", ",")}%
+            </span>
+            <span class="kpi__cmp">vs. período anterior</span>
+          </div>
+        </div>${chart}`;
       grid.appendChild(card);
     });
   }
@@ -713,10 +738,23 @@
 
   function buildMetricsMenu() {
     const menu = $("#metricsMenu");
-    menu.innerHTML = `<div class="dd-label">Métricas no painel (máx. 8)</div>` + ALL_METRICS.map((m) => {
-      const on = state.metrics.includes(m.id);
-      return `<label class="dd-opt"><input type="checkbox" data-metric="${m.id}" ${on ? "checked" : ""}/> ${m.label}</label>`;
-    }).join("");
+    menu.innerHTML =
+      `<label class="dd-toggle">
+        <span>Mini gráfico nos cards</span>
+        <span class="switch"><input type="checkbox" id="miniToggle" ${state.miniChart ? "checked" : ""}/><span class="switch__track"><span class="switch__thumb"></span></span></span>
+      </label>
+      <div class="dd-sep"></div>
+      <div class="dd-label">Métricas no painel (máx. 8)</div>` + ALL_METRICS.map((m) => {
+        const on = state.metrics.includes(m.id);
+        return `<label class="dd-opt"><input type="checkbox" data-metric="${m.id}" ${on ? "checked" : ""}/> ${m.label}</label>`;
+      }).join("");
+
+    $("#miniToggle", menu).addEventListener("change", (e) => {
+      state.miniChart = e.target.checked;
+      localStorage.setItem("metryx-minichart", state.miniChart ? "1" : "0");
+      if (state.view === "dashboard") renderKPIs(current);
+    });
+
     $$("[data-metric]", menu).forEach((cb) => cb.addEventListener("change", () => {
       const id = cb.dataset.metric;
       if (cb.checked) {
