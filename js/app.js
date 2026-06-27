@@ -1622,33 +1622,55 @@
   // inline across the whole capture frame so nothing unsupported remains.
   const _cctx = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
   function toRGB(v) {
-    if (!v || v === "none" || v === "transparent" || v.includes("gradient")) return v;
+    if (!v) return v;
+    v = String(v).trim();
+    if (v === "none" || v === "transparent" || v.includes("gradient") || v.startsWith("url(")) return v;
     // Read back actual pixels — canvas fillStyle round-trips color(srgb …)
     // unchanged, so sample the rendered pixel to force rgba() output.
     try {
       _cctx.clearRect(0, 0, 1, 1);
+      _cctx.fillStyle = "#000";
       _cctx.fillStyle = v;
       _cctx.fillRect(0, 0, 1, 1);
       const d = _cctx.getImageData(0, 0, 1, 1).data;
       return `rgba(${d[0]}, ${d[1]}, ${d[2]}, ${(d[3] / 255).toFixed(3)})`;
     } catch (_) { return v; }
   }
+  // Rewrite color-mix()/color() tokens inside a string (e.g. gradients,
+  // box-shadow) to rgba() so html2canvas can parse them — keeps gradients.
+  function rewriteColors(str) {
+    if (!str || (str.indexOf("color(") < 0 && str.indexOf("color-mix(") < 0)) return str;
+    let out = "", i = 0;
+    while (i < str.length) {
+      const a = str.indexOf("color(", i), b = str.indexOf("color-mix(", i);
+      if (a < 0 && b < 0) { out += str.slice(i); break; }
+      const isMix = b >= 0 && (a < 0 || b < a);
+      const idx = isMix ? b : a;
+      out += str.slice(i, idx);
+      let j = idx + (isMix ? "color-mix(".length : "color(".length), depth = 1;
+      for (; j < str.length; j++) { const ch = str[j]; if (ch === "(") depth++; else if (ch === ")" && --depth === 0) break; }
+      out += toRGB(str.slice(idx, j + 1));
+      i = j + 1;
+    }
+    return out;
+  }
   function normalizeForCapture(root) {
     const nodes = [root, ...root.querySelectorAll("*")];
     nodes.forEach((node) => {
       const cs = getComputedStyle(node);
       const s = node.style;
-      const bgImg = cs.backgroundImage;
       s.background = "";
       s.backgroundColor = toRGB(cs.backgroundColor);
-      s.backgroundImage = bgImg.includes("color-mix") || bgImg.includes("color(") ? "none" : bgImg;
+      s.backgroundImage = rewriteColors(cs.backgroundImage);
       s.color = toRGB(cs.color);
       s.borderColor = toRGB(cs.borderColor);
-      s.boxShadow = cs.boxShadow.includes("color-mix") || cs.boxShadow.includes("color(") ? "none" : cs.boxShadow;
+      s.boxShadow = rewriteColors(cs.boxShadow);
       if (node.namespaceURI === SVGNS) {
-        if (node.getAttribute("stroke")) node.setAttribute("stroke", toRGB(cs.stroke !== "none" ? cs.stroke : cs.color));
+        const sa = node.getAttribute("stroke");
+        if (sa && sa !== "none" && sa.indexOf("url(") < 0) node.setAttribute("stroke", toRGB(cs.stroke !== "none" ? cs.stroke : cs.color));
         const fa = node.getAttribute("fill");
-        if (fa && fa !== "none") node.setAttribute("fill", toRGB(cs.fill !== "none" ? cs.fill : cs.color));
+        if (fa && fa !== "none" && fa.indexOf("url(") < 0) node.setAttribute("fill", toRGB(cs.fill !== "none" ? cs.fill : cs.color));
+        if (node.tagName === "stop") { const sc = cs.stopColor || node.getAttribute("stop-color"); if (sc) node.setAttribute("stop-color", toRGB(sc)); }
       }
     });
   }
