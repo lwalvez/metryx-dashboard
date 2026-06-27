@@ -204,6 +204,47 @@
       channels, campaigns };
   }
 
+  // When the user typed real numbers in the per-client Planilha, make the
+  // dashboard/report reflect those totals instead of the mock. Deltas keep the
+  // mock trend (they're computed before this override runs).
+  function applySheetOverride(d, clientId) {
+    if (clientId === "all") return;
+    let rows = null;
+    try { rows = JSON.parse(localStorage.getItem("metryx-sheet:" + clientId) || "null"); } catch (_) {}
+    if (!Array.isArray(rows) || !rows.length) return;
+    const n = (v) => { const x = parseFloat(v); return isFinite(x) ? x : 0; };
+    const sInv = rows.reduce((s, r) => s + n(r.invest), 0);
+    const sRec = rows.reduce((s, r) => s + n(r.receita), 0);
+    const sLeads = rows.reduce((s, r) => s + n(r.leads), 0);
+    if (sInv <= 0 && sRec <= 0 && sLeads <= 0) return;
+
+    const scI = d.invest > 0 ? sInv / d.invest : 1;
+    const scR = d.receita > 0 ? sRec / d.receita : 1;
+    d.series = d.series.map((p) => ({ date: p.date, invest: p.invest * scI, receita: p.receita * scR }));
+    if (sInv > 0) d.invest = sInv;
+    if (sRec > 0) d.receita = sRec;
+    d.roas = d.invest > 0 ? d.receita / d.invest : 0;
+    if (sLeads > 0) { d.leads = sLeads; d.cpl = d.invest / sLeads; }
+    d.impressoes *= scI; d.cliques *= scI; d.pageViews *= scI;
+    if (d.impressoes > 0) d.cpm = (d.invest / d.impressoes) * 1000;
+
+    const chMeta = {}; CHANNELS.forEach((c) => (chMeta[c.name] = c.color));
+    const byCanal = {};
+    rows.forEach((r) => { const k = r.canal || "Outros"; byCanal[k] = (byCanal[k] || 0) + n(r.invest); });
+    let chs = Object.keys(byCanal).map((name, i) => ({ name, color: chMeta[name] || CLIENT_COLORS[i % CLIENT_COLORS.length], value: byCanal[name] }));
+    const chT = chs.reduce((s, c) => s + c.value, 0) || 1;
+    chs.forEach((c) => (c.share = c.value / chT));
+    chs = chs.filter((c) => c.value > 0).sort((a, b) => b.value - a.value);
+    if (chs.length) d.channels = chs;
+
+    const camps = rows.filter((r) => (r.campanha || "").trim()).map((r, i) => {
+      const inv = n(r.invest), rec = n(r.receita);
+      return { name: r.campanha, color: chMeta[r.canal] || CLIENT_COLORS[i % CLIENT_COLORS.length], invest: inv, receita: rec, roas: inv > 0 ? rec / inv : 0 };
+    }).sort((a, b) => b.roas - a.roas).slice(0, 8);
+    if (camps.length) d.campaigns = camps;
+    d.fromSheet = true;
+  }
+
   function withDeltas(clientId, range) {
     const cur = buildData(clientId, range, 0);
     const prev = buildData(clientId, range, range);
@@ -226,6 +267,7 @@
       v70: pct(cur.v70, prev.v70),
       seguidores: pct(cur.seguidores, prev.seguidores),
     };
+    applySheetOverride(cur, clientId);
     return cur;
   }
 
@@ -1488,6 +1530,39 @@
     ];
   }
   function saveAlerts(a) { localStorage.setItem("metryx-alerts", JSON.stringify(a)); }
+
+  function exportAlerts() {
+    const json = JSON.stringify({ version: 1, exported_at: new Date().toISOString(), alerts: loadAlerts() }, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = el("a"); a.href = url; a.download = `alertas-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast("Alertas exportados");
+  }
+  function importAlerts(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      let parsed; try { parsed = JSON.parse(String(reader.result)); } catch (_) { toast("JSON inválido", false); return; }
+      const list = Array.isArray(parsed) ? parsed : (parsed && parsed.alerts);
+      if (!Array.isArray(list)) { toast("Formato inesperado", false); return; }
+      const valid = ALERT_METRICS.map((m) => m.id);
+      const cur = loadAlerts();
+      let added = 0;
+      list.forEach((r) => {
+        const metric = String((r && r.metric) || "");
+        const op = r && r.op === "<" ? "<" : ">";
+        const value = parseFloat(r && r.value);
+        if (!valid.includes(metric) || !isFinite(value)) return;
+        cur.push({ id: "a" + Date.now() + Math.random().toString(36).slice(2, 6), metric, op, value, enabled: !(r && r.enabled === false) });
+        added++;
+      });
+      if (!added) { toast("Nenhuma regra válida no arquivo", false); return; }
+      saveAlerts(cur); updateAlertBadge(); renderAlertas();
+      toast(added + " regra(s) importada(s)");
+    };
+    reader.readAsText(file);
+  }
   function alertFires(rule, d) {
     const m = ALERT_METRICS.find((x) => x.id === rule.metric); if (!m) return false;
     const v = m.get(d); return rule.op === ">" ? v > rule.value : v < rule.value;
@@ -1542,7 +1617,14 @@
         </section>
 
         <section class="panel">
-          <h3 class="report__h" style="margin:0 0 14px">Regras de alerta</h3>
+          <div class="al-head">
+            <h3 class="report__h" style="margin:0">Regras de alerta</h3>
+            <div class="al-io">
+              <button class="btn btn--ghost" id="alImport"><svg viewBox="0 0 24 24" width="15" height="15" fill="none"><path d="M12 4v10m0 0 4-4m-4 4-4-4M5 19h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg> Importar</button>
+              <button class="btn btn--ghost" id="alExport"><svg viewBox="0 0 24 24" width="15" height="15" fill="none"><path d="M12 20V10m0 0 4 4m-4-4-4 4M5 5h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg> Exportar</button>
+              <input type="file" id="alFile" accept="application/json,.json" hidden />
+            </div>
+          </div>
           <div class="al-rules">${rulesHTML || `<p class="sec-sub">Nenhuma regra. Crie a primeira abaixo.</p>`}</div>
           <form class="al-new" id="alForm">
             <select id="alMetric" class="rep-select">${ALERT_METRICS.map((m) => `<option value="${m.id}">${m.label}</option>`).join("")}</select>
@@ -1567,6 +1649,12 @@
       const a = loadAlerts();
       a.push({ id: "a" + Date.now(), metric: $("#alMetric").value, op: $("#alOp").value, value: v, enabled: true });
       saveAlerts(a); updateAlertBadge(); renderAlertas(); toast("Regra criada");
+    });
+
+    const exB = $("#alExport"); if (exB) exB.addEventListener("click", exportAlerts);
+    const imB = $("#alImport"); if (imB) imB.addEventListener("click", () => $("#alFile").click());
+    const imF = $("#alFile"); if (imF) imF.addEventListener("change", (e) => {
+      const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) importAlerts(f);
     });
   }
 
@@ -1971,9 +2059,35 @@
   /* ============================================================
      EVENTS
      ============================================================ */
+  function exportDashboardCSV() {
+    const d = current;
+    if (!d) { toast("Abra o dashboard primeiro", false); return; }
+    const client = (CLIENTS.find((c) => c.id === state.clientId) || CLIENTS[0]).name;
+    const esc = (v) => { v = String(v == null ? "" : v); return /[",;\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    const lines = [];
+    lines.push(esc("Metryx — " + client + " — últimos " + state.range + " dias"));
+    lines.push("");
+    lines.push(["Indicador", "Valor", "Variação %"].join(","));
+    state.metrics.forEach((id) => {
+      const m = METRIC_DEFS[id]; if (!m) return;
+      const dv = d.delta[m.key] ?? 0;
+      lines.push([m.label, m.fmt(d), dv.toFixed(1).replace(".", ",") + "%"].map(esc).join(","));
+    });
+    lines.push("");
+    lines.push(["Campanha", "Investimento", "Receita", "ROAS"].join(","));
+    d.campaigns.forEach((c) => lines.push([c.name, Math.round(c.invest), Math.round(c.receita), c.roas.toFixed(2)].map(esc).join(",")));
+    const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = el("a"); a.href = url; a.download = `dashboard-${state.clientId}-${state.range}d.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast("CSV do dashboard baixado");
+  }
+
   function bind() {
     // nav
     $$(".nav__item").forEach((n) => n.addEventListener("click", (e) => { e.preventDefault(); switchView(n.dataset.view); }));
+    const csvB = $("#csvBtn"); if (csvB) csvB.addEventListener("click", exportDashboardCSV);
     // range
     $$("#rangeSeg .seg").forEach((s) => s.addEventListener("click", () => setRange(+s.dataset.range)));
     // dropdown triggers

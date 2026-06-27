@@ -766,3 +766,7 @@ html.dark .cfg-row input { background: #0e131c; }
 .rep-manual__notes textarea:focus { outline: none; border-color: var(--brand); }
 .rep-notes { white-space: pre-wrap; line-height: 1.6; }
 @media (max-width: 560px) { .mr-row { grid-template-columns: 1fr 1fr; } .mr-del { grid-column: 2; justify-self: end; } }
+
+/* Alerts import/export header */
+.al-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.al-io { display: flex; gap: 8px; }
