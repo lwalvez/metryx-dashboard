@@ -580,6 +580,31 @@ html.dark .rep-controls input, html.dark .rep-select { background: #0e131c; }
   #reportArea { position: absolute; left: 0; top: 0; width: 100%; border: 0; box-shadow: none; border-radius: 0; padding: 0; }
 }
 
+/* ============================ PLANILHA ============================ */
+.pl { display: flex; flex-direction: column; gap: 16px; margin-top: 4px; }
+.pl-toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; flex-wrap: wrap; padding: 16px 18px; }
+.pl-toolbar__actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pl-sheet { padding: 8px 8px 14px; }
+.pl-hint { font-size: .78rem; color: var(--text-3); margin: 10px 12px 2px; }
+.pl-table { min-width: 760px; }
+.pl-table th { padding: 12px 12px 10px; }
+.pl-table td { padding: 6px 8px; vertical-align: middle; }
+.pl-table tbody tr:hover { background: var(--surface-2); }
+.pl-table input, .pl-table select {
+  width: 100%; height: 36px; padding: 0 10px; border: 1px solid transparent; border-radius: 8px;
+  background: transparent; color: var(--text); font-size: .86rem; font-family: inherit; transition: border-color var(--t-fast), background var(--t-fast);
+}
+.pl-table input[type="number"] { font-variant-numeric: tabular-nums; }
+.pl-table input:hover, .pl-table select:hover { background: var(--surface-3); }
+.pl-table input:focus, .pl-table select:focus { outline: none; border-color: var(--brand); background: var(--surface); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 20%, transparent); }
+.pl-table select { cursor: pointer; }
+.pl-c-name input { font-weight: 500; }
+.pl-table .pl-cpl { font-variant-numeric: tabular-nums; color: var(--text-2); white-space: nowrap; }
+.pl-del { width: 44px; text-align: center; }
+.pl-table .pl-totals td { border-top: 2px solid var(--border); font-weight: 700; padding: 14px 12px; font-variant-numeric: tabular-nums; background: var(--surface-2); }
+.pl-table .pl-totals .pl-t-invest, .pl-table .pl-totals .pl-t-receita, .pl-table .pl-totals .pl-t-leads { font-family: "Sora", sans-serif; }
+.pl-empty-row td { padding: 28px 12px; text-align: center; color: var(--text-3); }
+
 /* ============================ RESPONSIVE ============================ */
 @media (max-width: 1080px) {
   .grid--2 { grid-template-columns: 1fr; }

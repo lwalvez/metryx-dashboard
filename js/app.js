@@ -904,6 +904,195 @@
     });
   }
 
+  /* ============================================================
+     PLANILHA — editable media-plan spreadsheet (per client)
+     ============================================================ */
+  const SHEET_CHANNELS = CHANNELS.map((c) => c.name);
+  let sheet = [];
+  let sheetClientId = state.clientId === "all" ? (CLIENTS[1] ? CLIENTS[1].id : "all") : state.clientId;
+  let sheetSaveTimer = null;
+
+  const sheetKey = (id) => "metryx-sheet:" + id;
+  function loadSheet(clientId) {
+    try { const s = JSON.parse(localStorage.getItem(sheetKey(clientId)) || "null"); if (Array.isArray(s)) return s; } catch (_) {}
+    const d = withDeltas(clientId, 30); // seed from this client's campaigns
+    return d.campaigns.map((c, i) => ({
+      campanha: c.name,
+      canal: CHANNELS[i % CHANNELS.length].name,
+      invest: Math.round(c.invest),
+      receita: Math.round(c.receita),
+      leads: Math.max(1, Math.round(c.invest / d.cpl)),
+    }));
+  }
+  function saveSheet() {
+    clearTimeout(sheetSaveTimer);
+    sheetSaveTimer = setTimeout(() => localStorage.setItem(sheetKey(sheetClientId), JSON.stringify(sheet)), 350);
+  }
+  const num = (v) => { const n = parseFloat(v); return isFinite(n) ? n : 0; };
+  function roasClass(r) { return r >= 5 ? "good" : r >= 3.5 ? "mid" : "bad"; }
+
+  function sheetTotals() {
+    return sheet.reduce((t, r) => { t.invest += num(r.invest); t.receita += num(r.receita); t.leads += num(r.leads); return t; }, { invest: 0, receita: 0, leads: 0 });
+  }
+
+  function rowHTML(r, i) {
+    const inv = num(r.invest), rec = num(r.receita), lds = num(r.leads);
+    const roas = inv > 0 ? rec / inv : 0;
+    const cpl = lds > 0 ? inv / lds : 0;
+    return `<tr data-row="${i}">
+      <td class="pl-c-name"><input type="text" data-f="campanha" value="${(r.campanha || "").replace(/"/g, "&quot;")}" placeholder="Nome da campanha" /></td>
+      <td><select data-f="canal">${SHEET_CHANNELS.map((c) => `<option ${c === r.canal ? "selected" : ""}>${c}</option>`).join("")}</select></td>
+      <td><input type="number" data-f="invest" min="0" step="1" value="${inv}" /></td>
+      <td><input type="number" data-f="receita" min="0" step="1" value="${rec}" /></td>
+      <td><input type="number" data-f="leads" min="0" step="1" value="${lds}" /></td>
+      <td class="num"><span class="roas-badge ${roasClass(roas)} pl-roas">${roas.toFixed(2).replace(".", ",")}x</span></td>
+      <td class="num pl-cpl">${cpl > 0 ? cf2.format(cpl) : "—"}</td>
+      <td class="pl-del"><button class="cc-act cc-act--danger" data-del-row="${i}" aria-label="Excluir linha" title="Excluir"><svg viewBox="0 0 24 24" width="15" height="15" fill="none"><path d="M5 7h14M10 7V5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2M6 7l1 12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></td>
+    </tr>`;
+  }
+
+  function totalsHTML() {
+    const t = sheetTotals();
+    const roas = t.invest > 0 ? t.receita / t.invest : 0;
+    const cpl = t.leads > 0 ? t.invest / t.leads : 0;
+    return `<tr class="pl-totals">
+      <td>Total · ${sheet.length} linha${sheet.length === 1 ? "" : "s"}</td><td></td>
+      <td class="pl-t-invest">${brl(t.invest)}</td>
+      <td class="pl-t-receita">${brl(t.receita)}</td>
+      <td class="pl-t-leads">${nf.format(t.leads)}</td>
+      <td class="num"><span class="roas-badge ${roasClass(roas)} pl-t-roas">${roas.toFixed(2).replace(".", ",")}x</span></td>
+      <td class="num pl-t-cpl">${cpl > 0 ? cf2.format(cpl) : "—"}</td>
+      <td></td>
+    </tr>`;
+  }
+
+  function renderSheetBody() {
+    const tb = $("#plBody");
+    if (!tb) return;
+    tb.innerHTML = sheet.map((r, i) => rowHTML(r, i)).join("") || `<tr class="pl-empty-row"><td colspan="8">Nenhuma linha. Clique em <b>+ Linha</b> ou importe um CSV.</td></tr>`;
+    $("#plFoot").innerHTML = sheet.length ? totalsHTML() : "";
+  }
+
+  function recalcRow(tr) {
+    const i = +tr.dataset.row;
+    const r = sheet[i]; if (!r) return;
+    const inv = num(r.invest), rec = num(r.receita), lds = num(r.leads);
+    const roas = inv > 0 ? rec / inv : 0, cpl = lds > 0 ? inv / lds : 0;
+    const rb = $(".pl-roas", tr); rb.textContent = roas.toFixed(2).replace(".", ",") + "x"; rb.className = "roas-badge " + roasClass(roas) + " pl-roas";
+    $(".pl-cpl", tr).textContent = cpl > 0 ? cf2.format(cpl) : "—";
+  }
+  function recalcTotals() { $("#plFoot").innerHTML = sheet.length ? totalsHTML() : ""; }
+
+  function exportSheetCSV() {
+    const head = ["Campanha", "Canal", "Investimento", "Receita", "Leads"];
+    const esc = (v) => { v = String(v ?? ""); return /[",;\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    const lines = [head.join(",")].concat(sheet.map((r) => [r.campanha, r.canal, num(r.invest), num(r.receita), num(r.leads)].map(esc).join(",")));
+    const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = el("a"); a.href = url; a.download = `planilha-${sheetClientId}.csv`; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast("CSV exportado");
+  }
+
+  function parseCSV(text) {
+    const rows = []; let row = [], cur = "", q = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (q) { if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; }
+      else if (ch === '"') q = true;
+      else if (ch === "," || ch === ";") { row.push(cur); cur = ""; }
+      else if (ch === "\n") { row.push(cur); rows.push(row); row = []; cur = ""; }
+      else if (ch !== "\r") cur += ch;
+    }
+    if (cur !== "" || row.length) { row.push(cur); rows.push(row); }
+    return rows.filter((r) => r.some((c) => c.trim() !== ""));
+  }
+  function importSheetCSV(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        let rows = parseCSV(String(reader.result));
+        if (!rows.length) { toast("CSV vazio", false); return; }
+        const first = rows[0].map((c) => c.trim().toLowerCase());
+        if (first.some((c) => /campanha|investimento|canal/.test(c))) rows = rows.slice(1); // drop header
+        sheet = rows.map((r) => ({
+          campanha: (r[0] || "Campanha").trim(),
+          canal: SHEET_CHANNELS.includes((r[1] || "").trim()) ? (r[1] || "").trim() : SHEET_CHANNELS[0],
+          invest: num((r[2] || "").replace(/[^\d.,-]/g, "").replace(".", "").replace(",", ".")),
+          receita: num((r[3] || "").replace(/[^\d.,-]/g, "").replace(".", "").replace(",", ".")),
+          leads: Math.round(num((r[4] || "").replace(/[^\d.-]/g, ""))),
+        }));
+        saveSheet(); renderSheetBody();
+        toast(`${sheet.length} linhas importadas`);
+      } catch (e) { console.error(e); toast("Falha ao importar CSV", false); }
+    };
+    reader.readAsText(file);
+  }
+
+  function renderPlanilha() {
+    if (state.clientId !== "all") sheetClientId = state.clientId;
+    if (!CLIENTS.some((c) => c.id === sheetClientId)) sheetClientId = CLIENTS[1] ? CLIENTS[1].id : "all";
+    sheet = loadSheet(sheetClientId);
+    const host = $("#view-generic");
+    host.innerHTML = `
+      <div class="pl">
+        <div class="panel pl-toolbar">
+          <div class="rep-ctl">
+            <label for="plClient">Cliente</label>
+            <select id="plClient" class="rep-select">${CLIENTS.filter((c) => c.id !== "all").map((c) => `<option value="${c.id}" ${c.id === sheetClientId ? "selected" : ""}>${c.name}</option>`).join("")}</select>
+          </div>
+          <div class="pl-toolbar__actions">
+            <button class="btn btn--ghost" id="plImport"><svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M12 4v10m0 0 4-4m-4 4-4-4M5 19h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg> Importar CSV</button>
+            <button class="btn btn--ghost" id="plExport"><svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M12 20V10m0 0 4 4m-4-4-4 4M5 5h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg> Exportar CSV</button>
+            <button class="btn btn--brand" id="plAdd"><svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> Linha</button>
+            <input type="file" id="plFile" accept=".csv,text/csv" hidden />
+          </div>
+        </div>
+
+        <div class="panel pl-sheet">
+          <div class="table-wrap">
+            <table class="data-table pl-table">
+              <thead><tr>
+                <th>Campanha</th><th>Canal</th><th>Investimento</th><th>Receita</th><th>Leads</th>
+                <th class="num">ROAS</th><th class="num">CPL</th><th></th>
+              </tr></thead>
+              <tbody id="plBody"></tbody>
+              <tfoot id="plFoot"></tfoot>
+            </table>
+          </div>
+          <p class="pl-hint">Edite as células diretamente. ROAS e CPL são calculados automaticamente. Tudo salvo no navegador por cliente.</p>
+        </div>
+      </div>`;
+
+    renderSheetBody();
+
+    const body = $("#plBody");
+    body.addEventListener("input", (e) => {
+      const inp = e.target.closest("[data-f]"); if (!inp) return;
+      const tr = inp.closest("tr"); const i = +tr.dataset.row; const f = inp.dataset.f;
+      sheet[i][f] = inp.type === "number" ? num(inp.value) : inp.value;
+      if (f === "invest" || f === "receita" || f === "leads") { recalcRow(tr); recalcTotals(); }
+      saveSheet();
+    });
+    body.addEventListener("change", (e) => { if (e.target.matches("select[data-f]")) saveSheet(); });
+    body.addEventListener("click", (e) => {
+      const del = e.target.closest("[data-del-row]"); if (!del) return;
+      sheet.splice(+del.dataset.delRow, 1); saveSheet(); renderSheetBody();
+    });
+
+    $("#plClient").addEventListener("change", (e) => {
+      sheetClientId = e.target.value; sheet = loadSheet(sheetClientId); renderSheetBody();
+    });
+    $("#plAdd").addEventListener("click", () => {
+      sheet.push({ campanha: "", canal: SHEET_CHANNELS[0], invest: 0, receita: 0, leads: 0 });
+      saveSheet(); renderSheetBody();
+      const last = $("#plBody tr:last-child input[data-f=campanha]"); if (last) last.focus();
+    });
+    $("#plExport").addEventListener("click", exportSheetCSV);
+    $("#plImport").addEventListener("click", () => $("#plFile").click());
+    $("#plFile").addEventListener("change", (e) => { if (e.target.files[0]) importSheetCSV(e.target.files[0]); e.target.value = ""; });
+  }
+
   function renderEmptyView(view) {
     const host = $("#view-generic");
     const copy = {
@@ -949,6 +1138,7 @@
     if (isDash) renderDashboard();
     else if (view === "clientes") renderClientes();
     else if (view === "relatorios") renderRelatorios();
+    else if (view === "planilha") renderPlanilha();
     else renderEmptyView(view);
     if (view === "insights") openDrawer();
     closeNav();
