@@ -855,3 +855,13 @@ html.dark .cfg-row input { background: #0e131c; }
   .app.nav-collapsed .sidebar { display: none; }
   .app.nav-collapsed .topbar__menu { display: grid; }
 }
+
+/* Proportional 12-col dashboard grid with dense auto-packing (harmonic reorder) */
+.dash-blocks { grid-template-columns: repeat(12, minmax(0, 1fr)); grid-auto-flow: row dense; }
+.dash-block--full { grid-column: span 12; }
+.dash-block--twothird { grid-column: span 8; }
+.dash-block--half { grid-column: span 6; }
+.dash-block--third { grid-column: span 4; }
+@media (max-width: 880px) {
+  .dash-block--full, .dash-block--twothird, .dash-block--half, .dash-block--third { grid-column: 1 / -1; }
+}
