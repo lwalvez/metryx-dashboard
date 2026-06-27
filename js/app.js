@@ -133,6 +133,7 @@
     series: { receita: true, invest: true },
     metrics: JSON.parse(localStorage.getItem("metryx-metrics") || "null") || ["invest", "receita", "roas", "cpl"],
     miniChart: localStorage.getItem("metryx-minichart") !== "0", // showMiniChart, default on
+    chartType: ["combo", "bars", "lines", "area"].includes(localStorage.getItem("metryx-charttype")) ? localStorage.getItem("metryx-charttype") : "combo",
   };
 
   /* ============================================================
@@ -338,6 +339,8 @@
       const good = (m.deltaGood === "up" && dv >= 0) || (m.deltaGood === "down" && dv < 0);
       const arrow = dv >= 0 ? "M5 12l5-5 5 5" : "M5 8l5 5 5-5";
       const card = el("article", "kpi" + (showChart ? "" : " kpi--nochart"));
+      card.dataset.m = mId;
+      card.setAttribute("draggable", "true");
 
       let chart = "";
       if (showChart) {
@@ -376,6 +379,33 @@
         </div>${chart}`;
       grid.appendChild(card);
     });
+    enableKpiDnD(grid);
+  }
+
+  // Drag-and-drop reordering of KPI cards (desktop). Persists via state.metrics.
+  function enableKpiDnD(grid) {
+    let dragId = null;
+    $$(".kpi", grid).forEach((card) => {
+      card.addEventListener("dragstart", (e) => {
+        dragId = card.dataset.m; card.classList.add("is-dragging");
+        if (e.dataTransfer) { e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", dragId); } catch (_) {} }
+      });
+      card.addEventListener("dragend", () => { card.classList.remove("is-dragging"); $$(".kpi", grid).forEach((k) => k.classList.remove("is-dropt")); });
+      card.addEventListener("dragover", (e) => { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = "move"; if (card.dataset.m !== dragId) card.classList.add("is-dropt"); });
+      card.addEventListener("dragleave", () => card.classList.remove("is-dropt"));
+      card.addEventListener("drop", (e) => {
+        e.preventDefault(); card.classList.remove("is-dropt");
+        const targetId = card.dataset.m;
+        if (!dragId || dragId === targetId) return;
+        const arr = state.metrics.slice();
+        const from = arr.indexOf(dragId), to = arr.indexOf(targetId);
+        if (from < 0 || to < 0) return;
+        arr.splice(from, 1); arr.splice(to, 0, dragId);
+        state.metrics = arr;
+        try { localStorage.setItem("metryx-metrics", JSON.stringify(state.metrics)); } catch (_) {}
+        renderKPIs(current);
+      });
+    });
   }
 
   /* ============================================================
@@ -407,7 +437,10 @@
         <stop offset="100%" stop-color="var(--c-receita)" stop-opacity="0"/></linearGradient>
       <linearGradient id="invGrad" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%" stop-color="var(--c-invest)" stop-opacity="1"/>
-        <stop offset="100%" stop-color="var(--c-invest)" stop-opacity="0.55"/></linearGradient>`;
+        <stop offset="100%" stop-color="var(--c-invest)" stop-opacity="0.55"/></linearGradient>
+      <linearGradient id="recBarGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="var(--c-receita)" stop-opacity="1"/>
+        <stop offset="100%" stop-color="var(--c-receita)" stop-opacity="0.55"/></linearGradient>`;
     svg.appendChild(defs);
 
     const yToPx = (v) => pad.t + ih - (v / niceMax) * ih;
@@ -425,36 +458,51 @@
 
     const n = pts.length;
     const slot = iw / n;
-    const barW = Math.max(5, Math.min(34, slot * (n > 30 ? 0.7 : 0.46)));
+    const type = state.chartType || "combo";
+    const invIsBar = type === "combo" || type === "bars";
+    const recIsBar = type === "bars";
+    const paired = type === "bars" && showInv && showRec;
 
-    // bars (investimento)
-    if (showInv) {
+    function drawBarsSeries(key, grad, group) {
+      const fullW = Math.max(5, Math.min(34, slot * (n > 30 ? 0.7 : 0.46)));
+      const bw = group ? fullW * 0.46 : fullW;
+      const dx = group === 1 ? -(bw / 2) - 1 : group === 2 ? (bw / 2) + 1 : 0;
       pts.forEach((p, i) => {
-        const x = pad.l + slot * i + slot / 2 - barW / 2;
-        const y = yToPx(p.invest);
-        const rect = svgEl("rect", { class: "bar", x: x.toFixed(1), y: y.toFixed(1), width: barW.toFixed(1), height: Math.max(0, pad.t + ih - y).toFixed(1), rx: Math.min(5, barW / 2), fill: "url(#invGrad)" });
+        const cx = pad.l + slot * i + slot / 2 + dx;
+        const x = cx - bw / 2;
+        const y = yToPx(p[key]);
+        const rect = svgEl("rect", { class: "bar", x: x.toFixed(1), y: y.toFixed(1), width: bw.toFixed(1), height: Math.max(0, pad.t + ih - y).toFixed(1), rx: Math.min(5, bw / 2), fill: grad });
         if (!reduceMotion) {
-          rect.style.transformOrigin = `${(x + barW / 2).toFixed(1)}px ${(pad.t + ih)}px`;
+          rect.style.transformOrigin = `${cx.toFixed(1)}px ${(pad.t + ih)}px`;
           rect.animate([{ transform: "scaleY(0)" }, { transform: "scaleY(1)" }], { duration: 520, delay: i * (n > 30 ? 4 : 18), easing: "cubic-bezier(.2,.7,.2,1)", fill: "backwards" });
         }
         svg.appendChild(rect);
       });
     }
-
-    // area + line (receita)
-    if (showRec) {
-      const linePts = pts.map((p, i) => [pad.l + slot * i + slot / 2, yToPx(p.receita)]);
+    function drawLineSeries(key, color, grad, withArea) {
+      const linePts = pts.map((p, i) => [pad.l + slot * i + slot / 2, yToPx(p[key])]);
       const dLine = linePts.map((pt, i) => `${i ? "L" : "M"}${pt[0].toFixed(1)} ${pt[1].toFixed(1)}`).join(" ");
-      const dArea = `${dLine} L${linePts[linePts.length - 1][0].toFixed(1)} ${pad.t + ih} L${linePts[0][0].toFixed(1)} ${pad.t + ih} Z`;
-      svg.appendChild(svgEl("path", { class: "area-path", d: dArea }));
-      const line = svgEl("path", { class: "line-path", d: dLine });
+      if (withArea) {
+        const dArea = `${dLine} L${linePts[linePts.length - 1][0].toFixed(1)} ${pad.t + ih} L${linePts[0][0].toFixed(1)} ${pad.t + ih} Z`;
+        svg.appendChild(svgEl("path", { class: "area-path", d: dArea, fill: grad }));
+      }
+      const line = svgEl("path", { class: "line-path", d: dLine, stroke: color });
       svg.appendChild(line);
       if (!reduceMotion) {
-        const len = line.getTotalLength ? 2000 : 2000;
+        const len = 2000;
         line.style.strokeDasharray = len; line.style.strokeDashoffset = len;
         line.animate([{ strokeDashoffset: len }, { strokeDashoffset: 0 }], { duration: 900, easing: "ease-out", fill: "forwards" });
       }
-      linePts.forEach(([x, y]) => svg.appendChild(svgEl("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: n > 30 ? 0 : 3, fill: "var(--surface)", stroke: "var(--c-receita)", "stroke-width": 2 })));
+      if (n <= 30) linePts.forEach(([x, y]) => svg.appendChild(svgEl("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: 3, fill: "var(--surface)", stroke: color, "stroke-width": 2 })));
+    }
+
+    if (showInv) {
+      if (invIsBar) drawBarsSeries("invest", "url(#invGrad)", paired ? 1 : 0);
+      else drawLineSeries("invest", "var(--c-invest)", "url(#invGrad)", type === "area");
+    }
+    if (showRec) {
+      if (recIsBar) drawBarsSeries("receita", "url(#recBarGrad)", paired ? 2 : 0);
+      else drawLineSeries("receita", "var(--c-receita)", "url(#recGrad)", type !== "lines");
     }
 
     // x labels (skip to avoid crowding)
@@ -2181,6 +2229,17 @@ ${metasHTML}
       b.classList.toggle("is-on", state.series[key]);
       renderCombo(current);
     }));
+
+    // chart type
+    const ct = $("#chartType");
+    if (ct) {
+      ct.value = state.chartType;
+      ct.addEventListener("change", () => {
+        state.chartType = ct.value;
+        try { localStorage.setItem("metryx-charttype", state.chartType); } catch (_) {}
+        if (current) renderCombo(current);
+      });
+    }
 
     // buttons
     $("#shotBtn").addEventListener("click", (e) => captureMetrics(e.currentTarget));

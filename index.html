@@ -201,9 +201,17 @@
                   <h2 class="card__title">Receita x Investimento</h2>
                   <p class="card__sub" id="rvSub">Diário · R$</p>
                 </div>
-                <div class="legend" id="rvLegend">
-                  <button class="legend__item is-on" data-series="receita"><i style="background:var(--c-receita)"></i>Receita</button>
-                  <button class="legend__item is-on" data-series="invest"><i style="background:var(--c-invest)"></i>Investimento</button>
+                <div class="rv-ctl">
+                  <div class="legend" id="rvLegend">
+                    <button class="legend__item is-on" data-series="receita"><i style="background:var(--c-receita)"></i>Receita</button>
+                    <button class="legend__item is-on" data-series="invest"><i style="background:var(--c-invest)"></i>Investimento</button>
+                  </div>
+                  <select id="chartType" class="chart-type" aria-label="Tipo de gráfico" title="Tipo de gráfico">
+                    <option value="combo">Combo</option>
+                    <option value="bars">Barras</option>
+                    <option value="lines">Linhas</option>
+                    <option value="area">Área</option>
+                  </select>
                 </div>
               </header>
               <div class="chart" id="comboChart"></div>

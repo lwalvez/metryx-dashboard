@@ -782,3 +782,13 @@ html.dark .cfg-row input { background: #0e131c; }
 .al-badge { font-size: .72rem; font-weight: 600; padding: 3px 8px; border-radius: 99px; white-space: nowrap; }
 .al-badge.is-ok { background: color-mix(in srgb, var(--c-receita) 20%, transparent); color: var(--c-receita); }
 .al-badge.is-bad { background: color-mix(in srgb, #f1564f 20%, transparent); color: #f1564f; }
+
+/* Chart type selector */
+.rv-ctl { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.chart-type { height: 32px; padding: 0 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: inherit; font-size: .8rem; cursor: pointer; }
+.chart-type:focus { outline: none; border-color: var(--brand); }
+
+/* KPI card drag-reorder */
+.kpi[draggable="true"] { cursor: grab; }
+.kpi.is-dragging { opacity: .45; }
+.kpi.is-dropt { outline: 2px dashed var(--brand); outline-offset: 2px; }
