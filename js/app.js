@@ -411,7 +411,7 @@
   }
 
   // Reorder whole dashboard blocks (KPIs/chart/funnel/channels/table) via grip.
-  const DASH_BLOCKS = ["kpis", "chart", "funnel", "channels", "table"];
+  const DASH_BLOCKS = ["kpis", "chart", "funnel", "channels", "table", "secondary", "video", "highlights", "cumrev", "insights"];
   function saveDashOrder(order) { try { localStorage.setItem("metryx-dash-order", JSON.stringify(order)); } catch (_) {} }
   function loadDashOrder() {
     let o = null; try { o = JSON.parse(localStorage.getItem("metryx-dash-order") || "null"); } catch (_) {}
@@ -707,6 +707,70 @@
   /* ============================================================
      AI insights (derived from current data)
      ============================================================ */
+  /* ---------- extra dashboard sections ---------- */
+  function renderSecondary(d) {
+    const host = $("#secMetrics"); if (!host) return;
+    const ids = ["ctr", "cpm", "cpa", "connect", "custoResult", "txconv"];
+    host.innerHTML = ids.map((id) => {
+      const m = METRIC_DEFS[id]; if (!m) return "";
+      const dv = d.delta[m.key] ?? 0;
+      const good = (m.deltaGood === "up" && dv >= 0) || (m.deltaGood === "down" && dv < 0);
+      return `<div class="mini-stat">
+        <div class="mini-stat__l">${m.label}</div>
+        <div class="mini-stat__v">${m.fmt(d)}</div>
+        <div class="mini-stat__d ${good ? "is-up" : "is-down"}">${dv >= 0 ? "▲" : "▼"} ${Math.abs(dv).toFixed(1).replace(".", ",")}%</div>
+      </div>`;
+    }).join("");
+  }
+
+  function renderVideo(d) {
+    const host = $("#vidBars"); if (!host) return;
+    const steps = [["25%", d.v25, "#7c5cff"], ["50%", d.v50, "#9d86ff"], ["70%", d.v70, "#b04dff"]];
+    host.innerHTML = steps.map(([lbl, val, col]) => {
+      const pct = clamp(val * 100, 0, 100);
+      return `<div class="vid-row">
+        <div class="vid-row__head"><span>Assistido ${lbl}</span><b>${pct.toFixed(0)}%</b></div>
+        <div class="vid-bar"><span style="width:${pct.toFixed(0)}%;background:${col}"></span></div>
+      </div>`;
+    }).join("");
+  }
+
+  function renderHighlights(d) {
+    const host = $("#highlights"); if (!host) return;
+    if (!d.campaigns.length) { host.innerHTML = `<p class="rep-empty">Sem campanhas no período.</p>`; return; }
+    const best = d.campaigns[0];
+    const worst = [...d.campaigns].sort((a, b) => a.roas - b.roas)[0];
+    const card = (c, kind, label) => `<div class="hl-card hl-${kind}">
+      <div class="hl-card__lbl">${label}</div>
+      <div class="hl-card__name"><span class="tag" style="background:${c.color}"></span>${c.name}</div>
+      <div class="hl-card__roas">${c.roas.toFixed(2).replace(".", ",")}x</div>
+      <div class="hl-card__meta">${brl(c.invest)} → ${brl(c.receita)}</div>
+    </div>`;
+    host.innerHTML = card(best, "good", "Melhor ROAS") + card(worst, "bad", "Pior ROAS");
+  }
+
+  function renderCumRev(d) {
+    const host = $("#cumChart"); if (!host) return;
+    let acc = 0; const vals = d.series.map((p) => (acc += p.receita));
+    const W = 320, H = 150; const g = sparkGeo(vals, W, H, 6);
+    host.innerHTML = `
+      <svg class="cum-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-label="Receita acumulada">
+        <defs><linearGradient id="cumGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="var(--c-receita)" stop-opacity="0.30"/>
+          <stop offset="100%" stop-color="var(--c-receita)" stop-opacity="0"/></linearGradient></defs>
+        <path d="${g.area}" fill="url(#cumGrad)"/>
+        <path d="${g.line}" fill="none" stroke="var(--c-receita)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+      </svg>
+      <div class="cum-foot">Total acumulado no período: <b>${brl(acc)}</b></div>`;
+  }
+
+  function renderDashInsights(d) {
+    const host = $("#dashInsights"); if (!host) return;
+    host.innerHTML = computeInsights(d).slice(0, 4).map((ins) =>
+      `<div class="insight is-${ins.kind}"><div class="insight__t">${ins.t}<span class="insight__chip ${ins.chipCls}">${ins.chip}</span></div><div class="insight__b">${ins.b}</div></div>`
+    ).join("");
+  }
+
   function computeInsights(d) {
     const best = d.campaigns[0];
     const worst = [...d.campaigns].sort((a, b) => a.roas - b.roas)[0];
@@ -1962,6 +2026,11 @@ ${metasHTML}
     renderFunnel(d);
     renderChannels(d);
     renderTable(d);
+    renderSecondary(d);
+    renderVideo(d);
+    renderHighlights(d);
+    renderCumRev(d);
+    renderDashInsights(d);
     renderInsights(d);
   }
 

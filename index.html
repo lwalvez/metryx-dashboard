@@ -257,7 +257,7 @@
             </div>
 
             <!-- Campanhas -->
-            <div class="dash-block dash-block--full" data-block="table">
+            <div class="dash-block dash-block--half" data-block="table">
               <button class="dash-grip" type="button" aria-label="Mover bloco" title="Arraste para mover"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></button>
               <section class="card" id="shot-table" aria-label="Desempenho por campanha">
                 <header class="card__head">
@@ -276,6 +276,51 @@
                     <tbody></tbody>
                   </table>
                 </div>
+              </section>
+            </div>
+
+            <!-- Outras métricas -->
+            <div class="dash-block dash-block--half" data-block="secondary">
+              <button class="dash-grip" type="button" aria-label="Mover bloco" title="Arraste para mover"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></button>
+              <section class="card" aria-label="Outras métricas">
+                <header class="card__head"><div><h2 class="card__title">Outras métricas</h2><p class="card__sub">CTR, CPM, CPA e mais</p></div></header>
+                <div class="sec-metrics" id="secMetrics"></div>
+              </section>
+            </div>
+
+            <!-- Engajamento de vídeo -->
+            <div class="dash-block dash-block--half" data-block="video">
+              <button class="dash-grip" type="button" aria-label="Mover bloco" title="Arraste para mover"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></button>
+              <section class="card" aria-label="Engajamento de vídeo">
+                <header class="card__head"><div><h2 class="card__title">Engajamento de vídeo</h2><p class="card__sub">% que assistiu cada trecho</p></div></header>
+                <div class="vid-bars" id="vidBars"></div>
+              </section>
+            </div>
+
+            <!-- Destaques de campanha -->
+            <div class="dash-block dash-block--half" data-block="highlights">
+              <button class="dash-grip" type="button" aria-label="Mover bloco" title="Arraste para mover"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></button>
+              <section class="card" aria-label="Destaques de campanha">
+                <header class="card__head"><div><h2 class="card__title">Destaques</h2><p class="card__sub">Melhor e pior ROAS</p></div></header>
+                <div class="highlights" id="highlights"></div>
+              </section>
+            </div>
+
+            <!-- Receita acumulada -->
+            <div class="dash-block dash-block--half" data-block="cumrev">
+              <button class="dash-grip" type="button" aria-label="Mover bloco" title="Arraste para mover"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></button>
+              <section class="card chart-card" aria-label="Receita acumulada">
+                <header class="card__head"><div><h2 class="card__title">Receita acumulada</h2><p class="card__sub">Soma corrida no período</p></div></header>
+                <div class="cum" id="cumChart"></div>
+              </section>
+            </div>
+
+            <!-- Insights automáticos -->
+            <div class="dash-block dash-block--full" data-block="insights">
+              <button class="dash-grip" type="button" aria-label="Mover bloco" title="Arraste para mover"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></button>
+              <section class="card" aria-label="Insights automáticos">
+                <header class="card__head"><div><h2 class="card__title">Insights automáticos</h2><p class="card__sub">Gerados a partir dos dados do período</p></div></header>
+                <div class="dash-insights" id="dashInsights"></div>
               </section>
             </div>
           </div>
