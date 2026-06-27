@@ -713,14 +713,14 @@
 
   function buildMetricsMenu() {
     const menu = $("#metricsMenu");
-    menu.innerHTML = `<div class="dd-label">Métricas no painel (máx. 4)</div>` + ALL_METRICS.map((m) => {
+    menu.innerHTML = `<div class="dd-label">Métricas no painel (máx. 8)</div>` + ALL_METRICS.map((m) => {
       const on = state.metrics.includes(m.id);
       return `<label class="dd-opt"><input type="checkbox" data-metric="${m.id}" ${on ? "checked" : ""}/> ${m.label}</label>`;
     }).join("");
     $$("[data-metric]", menu).forEach((cb) => cb.addEventListener("change", () => {
       const id = cb.dataset.metric;
       if (cb.checked) {
-        if (state.metrics.length >= 4) { cb.checked = false; toast("Máximo de 4 métricas"); return; }
+        if (state.metrics.length >= 8) { cb.checked = false; toast("Máximo de 8 métricas"); return; }
         state.metrics.push(id);
       } else {
         if (state.metrics.length <= 1) { cb.checked = true; return; }
