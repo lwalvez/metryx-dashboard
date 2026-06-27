@@ -13,11 +13,22 @@
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  // pt-BR formatters
+  // Number + money formatters. Underlying data is in BRL; `money()` converts to
+  // the chosen display currency with a live FX rate and localised formatting.
   const nf = new Intl.NumberFormat("pt-BR");
-  const cf = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
-  const cf2 = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2 });
-  const brl = (v) => cf.format(Math.round(v));
+  const CUR_LOCALE = { BRL: "pt-BR", USD: "en-US", EUR: "de-DE" };
+  const FX = { BRL: 1, USD: 0.19, EUR: 0.17 }; // BRL→currency; refreshed at runtime
+  let CURRENCY = ["BRL", "USD", "EUR"].includes(localStorage.getItem("metryx-currency"))
+    ? localStorage.getItem("metryx-currency") : "BRL";
+  function money(v, frac) {
+    frac = frac || 0;
+    return new Intl.NumberFormat(CUR_LOCALE[CURRENCY] || "pt-BR", {
+      style: "currency", currency: CURRENCY,
+      minimumFractionDigits: frac, maximumFractionDigits: frac,
+    }).format((+v || 0) * (FX[CURRENCY] || 1));
+  }
+  const money2 = (v) => money(v, 2);
+  const brl = (v) => money(Math.round(v), 0);
   const compact = (v) => {
     if (v >= 1e6) return (v / 1e6).toFixed(1).replace(".", ",") + " mi";
     if (v >= 1e3) return (v / 1e3).toFixed(1).replace(".", ",") + " mil";
@@ -225,14 +236,14 @@
     invest: { label: "Investimento", fmt: (d) => brl(d.invest), color: "var(--c-invest)", deltaGood: "up", key: "invest", spark: (d) => d.series.map((p) => p.invest) },
     receita: { label: "Receita", fmt: (d) => brl(d.receita), color: "var(--c-receita)", deltaGood: "up", key: "receita", spark: (d) => d.series.map((p) => p.receita) },
     roas: { label: "ROAS", fmt: (d) => d.roas.toFixed(2).replace(".", ",") + "x", color: "var(--brand)", deltaGood: "up", key: "roas", spark: (d) => d.series.map((p) => p.receita / p.invest) },
-    cpl: { label: "CPL", fmt: (d) => cf2.format(d.cpl), color: "var(--c-blue)", deltaGood: "down", key: "cpl", spark: (d) => d.series.map((p) => p.invest).reverse() },
-    cpa: { label: "CPA", fmt: (d) => cf2.format(d.cpa), color: "#e068d8", deltaGood: "down", key: "cpa", spark: (d) => d.series.map((p) => p.invest) },
+    cpl: { label: "CPL", fmt: (d) => money2(d.cpl), color: "var(--c-blue)", deltaGood: "down", key: "cpl", spark: (d) => d.series.map((p) => p.invest).reverse() },
+    cpa: { label: "CPA", fmt: (d) => money2(d.cpa), color: "#e068d8", deltaGood: "down", key: "cpa", spark: (d) => d.series.map((p) => p.invest) },
     ctr: { label: "CTR", fmt: (d) => (d.ctr * 100).toFixed(2).replace(".", ",") + "%", color: "#3b9cf6", deltaGood: "up", key: "ctr", spark: (d) => d.series.map((p) => p.receita / p.invest) },
     leads: { label: "Leads", fmt: (d) => nf.format(Math.round(d.leads)), color: "#21bfa0", deltaGood: "up", key: "leads", spark: (d) => d.series.map((p) => p.invest) },
     ticket: { label: "Ticket médio", fmt: (d) => brl(d.ticket), color: "#f5ae39", deltaGood: "up", key: "ticket", spark: (d) => d.series.map((p) => p.receita) },
     connect: { label: "Connect Rate", fmt: (d) => (d.connectRate * 100).toFixed(1).replace(".", ",") + "%", color: "#3b9cf6", deltaGood: "up", key: "connectRate", spark: (d) => d.series.map((p) => p.receita) },
-    custoResult: { label: "Custo por resultado", fmt: (d) => cf2.format(d.custoResultado), color: "#e068d8", deltaGood: "down", key: "custoResultado", spark: (d) => d.series.map((p) => p.invest) },
-    cpm: { label: "CPM", fmt: (d) => cf2.format(d.cpm), color: "#f5ae39", deltaGood: "down", key: "cpm", spark: (d) => d.series.map((p) => p.invest) },
+    custoResult: { label: "Custo por resultado", fmt: (d) => money2(d.custoResultado), color: "#e068d8", deltaGood: "down", key: "custoResultado", spark: (d) => d.series.map((p) => p.invest) },
+    cpm: { label: "CPM", fmt: (d) => money2(d.cpm), color: "#f5ae39", deltaGood: "down", key: "cpm", spark: (d) => d.series.map((p) => p.invest) },
     txconv: { label: "Tx. conversão da página", fmt: (d) => (d.txConvPagina * 100).toFixed(1).replace(".", ",") + "%", color: "#21bfa0", deltaGood: "up", key: "txConvPagina", spark: (d) => d.series.map((p) => p.receita) },
     vid25: { label: "Vídeo assistido 25%", fmt: (d) => (d.v25 * 100).toFixed(0) + "%", color: "#7c5cff", deltaGood: "up", key: "v25", spark: (d) => d.series.map((p) => p.receita) },
     vid50: { label: "Vídeo assistido 50%", fmt: (d) => (d.v50 * 100).toFixed(0) + "%", color: "#9d86ff", deltaGood: "up", key: "v50", spark: (d) => d.series.map((p) => p.receita) },
@@ -365,7 +376,8 @@
       const y = yToPx(v);
       svg.appendChild(svgEl("line", { class: "grid-line", x1: pad.l, y1: y, x2: W - pad.r, y2: y }));
       const tx = svgEl("text", { class: "axis-text", x: pad.l - 8, y: y + 4, "text-anchor": "end" });
-      tx.textContent = v >= 1000 ? (v / 1000).toFixed(0) + "k" : Math.round(v);
+      const av = v * (FX[CURRENCY] || 1);
+      tx.textContent = av >= 1000 ? (av / 1000).toFixed(0) + "k" : String(Math.round(av));
       svg.appendChild(tx);
     }
 
@@ -1011,7 +1023,7 @@
       <td><input type="number" data-f="receita" min="0" step="1" value="${rec}" /></td>
       <td><input type="number" data-f="leads" min="0" step="1" value="${lds}" /></td>
       <td class="num"><span class="roas-badge ${roasClass(roas)} pl-roas">${roas.toFixed(2).replace(".", ",")}x</span></td>
-      <td class="num pl-cpl">${cpl > 0 ? cf2.format(cpl) : "—"}</td>
+      <td class="num pl-cpl">${cpl > 0 ? money2(cpl) : "—"}</td>
       <td class="pl-del"><button class="cc-act cc-act--danger" data-del-row="${i}" aria-label="Excluir linha" title="Excluir"><svg viewBox="0 0 24 24" width="15" height="15" fill="none"><path d="M5 7h14M10 7V5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2M6 7l1 12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></td>
     </tr>`;
   }
@@ -1026,7 +1038,7 @@
       <td class="pl-t-receita">${brl(t.receita)}</td>
       <td class="pl-t-leads">${nf.format(t.leads)}</td>
       <td class="num"><span class="roas-badge ${roasClass(roas)} pl-t-roas">${roas.toFixed(2).replace(".", ",")}x</span></td>
-      <td class="num pl-t-cpl">${cpl > 0 ? cf2.format(cpl) : "—"}</td>
+      <td class="num pl-t-cpl">${cpl > 0 ? money2(cpl) : "—"}</td>
       <td></td>
     </tr>`;
   }
@@ -1044,7 +1056,7 @@
     const inv = num(r.invest), rec = num(r.receita), lds = num(r.leads);
     const roas = inv > 0 ? rec / inv : 0, cpl = lds > 0 ? inv / lds : 0;
     const rb = $(".pl-roas", tr); rb.textContent = roas.toFixed(2).replace(".", ",") + "x"; rb.className = "roas-badge " + roasClass(roas) + " pl-roas";
-    $(".pl-cpl", tr).textContent = cpl > 0 ? cf2.format(cpl) : "—";
+    $(".pl-cpl", tr).textContent = cpl > 0 ? money2(cpl) : "—";
   }
   function recalcTotals() { $("#plFoot").innerHTML = sheet.length ? totalsHTML() : ""; }
 
@@ -1188,7 +1200,7 @@
     }
     // CPL standing
     out.push({ kind: d.delta.cpl < 0 ? "good" : "info", chip: "Eficiência", chipCls: "chip-info", t: "Custo por lead",
-      b: `CPL atual <b>${cf2.format(d.cpl)}</b>, ${d.delta.cpl < 0 ? "abaixo" : "acima"} do período anterior (${d.delta.cpl >= 0 ? "+" : ""}${d.delta.cpl.toFixed(1).replace(".", ",")}%). ${d.delta.cpl < 0 ? "Eficiência ganhando — escale com segurança." : "Otimize segmentação para conter o CPL."}` });
+      b: `CPL atual <b>${money2(d.cpl)}</b>, ${d.delta.cpl < 0 ? "abaixo" : "acima"} do período anterior (${d.delta.cpl >= 0 ? "+" : ""}${d.delta.cpl.toFixed(1).replace(".", ",")}%). ${d.delta.cpl < 0 ? "Eficiência ganhando — escale com segurança." : "Otimize segmentação para conter o CPL."}` });
     return out;
   }
 
@@ -1197,13 +1209,13 @@
     const best = d.campaigns[0], worst = [...d.campaigns].sort((a, b) => a.roas - b.roas)[0], top = d.channels[0];
     const pct = (v) => (v >= 0 ? "+" : "") + v.toFixed(1).replace(".", ",") + "%";
     if (/roas|retorno/.test(q)) return `ROAS do período: <b>${d.roas.toFixed(2).replace(".", ",")}x</b> (${pct(d.delta.roas)} vs. anterior). Cada R$1 investido retorna <b>${d.roas.toFixed(2).replace(".", ",")}</b> em receita. ${d.roas >= 4 ? "Acima do saudável (4x)." : "Abaixo de 4x — revise campanhas de baixo retorno."}`;
-    if (/cpl|custo por lead|custo/.test(q)) return `CPL atual: <b>${cf2.format(d.cpl)}</b> (${pct(d.delta.cpl)}). ${d.delta.cpl < 0 ? "Caindo — boa eficiência." : "Subindo — foque em segmentação e criativos."} Para reduzir, comece pausando <b>${worst.name}</b> (ROAS ${worst.roas.toFixed(2).replace(".", ",")}x).`;
+    if (/cpl|custo por lead|custo/.test(q)) return `CPL atual: <b>${money2(d.cpl)}</b> (${pct(d.delta.cpl)}). ${d.delta.cpl < 0 ? "Caindo — boa eficiência." : "Subindo — foque em segmentação e criativos."} Para reduzir, comece pausando <b>${worst.name}</b> (ROAS ${worst.roas.toFixed(2).replace(".", ",")}x).`;
     if (/receita|faturamento/.test(q)) return `Receita: <b>${brl(d.receita)}</b> (${pct(d.delta.receita)} vs. anterior), sobre <b>${brl(d.invest)}</b> de investimento.`;
     if (/invest|gasto|orçamento/.test(q)) return `Investimento: <b>${brl(d.invest)}</b> (${pct(d.delta.invest)}). Maior canal: <b>${top.name}</b> com ${(top.share * 100).toFixed(0)}%.`;
     if (/escal|aumentar|melhor campanha|crescer/.test(q)) return `Escale <b>${best.name}</b> — melhor ROAS (<b>${best.roas.toFixed(2).replace(".", ",")}x</b>). Realocar ~15% do orçamento das piores campanhas pode somar até <b>${brl(best.receita * 0.15)}</b> em receita.`;
     if (/pior|pausar|cortar|reduzir/.test(q)) return `Pior campanha: <b>${worst.name}</b> (ROAS ${worst.roas.toFixed(2).replace(".", ",")}x). Pausar libera <b>${brl(worst.invest)}</b> para realocação.`;
     if (/canal|canais|meta|google|tiktok/.test(q)) return `Top canal: <b>${top.name}</b> (${(top.share * 100).toFixed(0)}% do investimento, ${brl(top.value)}). Diversificar reduz dependência e pode achar público de CPL menor.`;
-    if (/lead/.test(q)) return `Leads no período: <b>${nf.format(Math.round(d.leads))}</b>. Conversão clique→lead: <b>${(d.convLead * 100).toFixed(1).replace(".", ",")}%</b>. CPL: <b>${cf2.format(d.cpl)}</b>.`;
+    if (/lead/.test(q)) return `Leads no período: <b>${nf.format(Math.round(d.leads))}</b>. Conversão clique→lead: <b>${(d.convLead * 100).toFixed(1).replace(".", ",")}%</b>. CPL: <b>${money2(d.cpl)}</b>.`;
     if (/resumo|geral|como.*(vai|está)|panorama/.test(q)) { const ps = perfScore(d); return `Score de performance: <b>${ps.score}/100</b> (${ps.label}). ROAS <b>${d.roas.toFixed(2).replace(".", ",")}x</b>, receita ${pct(d.delta.receita)}, CPL ${pct(d.delta.cpl)}. Destaque: <b>${best.name}</b>. Atenção: <b>${worst.name}</b>.`; }
     return `Posso analisar ROAS, CPL, receita, investimento, canais, leads e campanhas deste período. Ex: "qual campanha escalar?", "como reduzir o CPL?", "resumo do período".`;
   }
@@ -1233,7 +1245,7 @@
               <div class="ai-score__sub">Score de performance · ${client} · ${state.range} dias</div>
               <div class="ai-chips">
                 <span class="ai-chip"><b>${d.roas.toFixed(2).replace(".", ",")}x</b> ROAS</span>
-                <span class="ai-chip"><b>${cf2.format(d.cpl)}</b> CPL</span>
+                <span class="ai-chip"><b>${money2(d.cpl)}</b> CPL</span>
                 <span class="ai-chip ${d.delta.receita >= 0 ? "up" : "down"}"><b>${(d.delta.receita >= 0 ? "+" : "") + d.delta.receita.toFixed(1).replace(".", ",")}%</b> receita</span>
               </div>
             </div>
@@ -1321,8 +1333,8 @@
      ============================================================ */
   const ALERT_METRICS = [
     { id: "roas", label: "ROAS", get: (d) => d.roas, fmt: (v) => v.toFixed(2).replace(".", ",") + "x" },
-    { id: "cpl", label: "CPL", get: (d) => d.cpl, fmt: (v) => cf2.format(v) },
-    { id: "cpa", label: "CPA", get: (d) => d.cpa, fmt: (v) => cf2.format(v) },
+    { id: "cpl", label: "CPL", get: (d) => d.cpl, fmt: (v) => money2(v) },
+    { id: "cpa", label: "CPA", get: (d) => d.cpa, fmt: (v) => money2(v) },
     { id: "ctr", label: "CTR (%)", get: (d) => d.ctr * 100, fmt: (v) => v.toFixed(2).replace(".", ",") + "%" },
     { id: "invest", label: "Investimento", get: (d) => d.invest, fmt: (v) => brl(v) },
     { id: "receita", label: "Receita", get: (d) => d.receita, fmt: (v) => brl(v) },
@@ -1353,7 +1365,7 @@
   }
   function alertRuleText(r) {
     const m = ALERT_METRICS.find((x) => x.id === r.metric);
-    const val = r.metric === "invest" || r.metric === "receita" ? brl(r.value) : r.metric === "ctr" ? r.value + "%" : r.metric === "roas" ? r.value + "x" : r.metric === "cpl" || r.metric === "cpa" ? cf2.format(r.value) : nf.format(r.value);
+    const val = r.metric === "invest" || r.metric === "receita" ? brl(r.value) : r.metric === "ctr" ? r.value + "%" : r.metric === "roas" ? r.value + "x" : r.metric === "cpl" || r.metric === "cpa" ? money2(r.value) : nf.format(r.value);
     return `${m ? m.label : r.metric} ${r.op} ${val}`;
   }
 
@@ -1577,6 +1589,40 @@
     else if (state.view === "clientes") renderClientes();
   }
 
+  // Re-render the active view in place (after currency / FX changes).
+  function rerender() {
+    const v = state.view;
+    if (v === "dashboard") renderDashboard();
+    else if (v === "clientes") renderClientes();
+    else if (v === "relatorios") renderRelatorios();
+    else if (v === "planilha") renderPlanilha();
+    else if (v === "insights") renderInsightsView();
+    else if (v === "integracoes") renderIntegracoes();
+    else if (v === "alertas") renderAlertas();
+    else if (v === "config") renderConfig();
+  }
+
+  function setCurrency(cur) {
+    if (!CUR_LOCALE[cur]) return;
+    CURRENCY = cur;
+    try { localStorage.setItem("metryx-currency", cur); } catch (_) {}
+    $$("#currencySeg .seg").forEach((s) => s.classList.toggle("is-active", s.dataset.cur === cur));
+    rerender();
+  }
+
+  // Pull live BRL→USD/EUR rates; falls back to bundled defaults on failure.
+  async function refreshFX() {
+    try {
+      const res = await fetch("https://open.er-api.com/v6/latest/BRL");
+      if (!res.ok) return;
+      const j = await res.json();
+      if (j && j.rates) {
+        ["USD", "EUR"].forEach((c) => { if (typeof j.rates[c] === "number" && j.rates[c] > 0) FX[c] = j.rates[c]; });
+        if (CURRENCY !== "BRL") rerender();
+      }
+    } catch (_) {}
+  }
+
   /* ---------- dropdowns ---------- */
   function buildClientMenu() {
     const menu = $("#clientMenu");
@@ -1705,10 +1751,26 @@
     });
   }
 
+  // Dashboard areas the user can include in a print. Order is canonical.
+  const SHOT_AREAS = [
+    ["kpiGrid", "Indicadores"],
+    ["shot-chart", "Receita x Investimento"],
+    ["shot-funnel", "Funil de conversão"],
+    ["shot-channels", "Investimento por canal"],
+    ["shot-table", "Campanhas"],
+  ];
+  function getShotAreas() {
+    let sel = null;
+    try { sel = JSON.parse(localStorage.getItem("metryx-shot-areas") || "null"); } catch (_) {}
+    if (!Array.isArray(sel) || !sel.length) sel = SHOT_AREAS.map((a) => a[0]);
+    return SHOT_AREAS.map((a) => a[0]).filter((id) => sel.includes(id));
+  }
+  function setShotAreas(ids) { try { localStorage.setItem("metryx-shot-areas", JSON.stringify(ids)); } catch (_) {} }
+
   async function captureMetrics(btn) {
     if (typeof window.html2canvas !== "function") { toast("Captura indisponível", false); return; }
-    const grid = $("#kpiGrid");
-    if (!grid || !grid.children.length) { toast("Nada para capturar", false); return; }
+    const nodes = getShotAreas().map((id) => $("#" + id)).filter(Boolean);
+    if (!nodes.length) { toast("Selecione ao menos uma área", false); return; }
 
     const rootCss = getComputedStyle(document.documentElement);
     const bg = toRGB((rootCss.getPropertyValue("--bg") || "#0a0d14").trim());
@@ -1717,7 +1779,7 @@
 
     // build a polished offscreen frame: brand header + metrics + footer
     const frame = el("div", "export-frame");
-    frame.style.width = Math.max(720, grid.scrollWidth) + "px";
+    frame.style.width = Math.max(720, ...nodes.map((n) => n.scrollWidth)) + "px";
     frame.style.padding = "28px";
     frame.style.background = bg;
     frame.innerHTML = `
@@ -1729,7 +1791,7 @@
         </div>
         <div class="export-meta"><b>${client}</b>últimos ${state.range} dias · ${now}</div>
       </div>`;
-    frame.appendChild(grid.cloneNode(true));
+    nodes.forEach((node) => { const c = node.cloneNode(true); c.style.marginTop = "16px"; frame.appendChild(c); });
     frame.insertAdjacentHTML("beforeend", `<div class="export-foot">Gerado em metryx-app · ${now}</div>`);
     document.body.appendChild(frame);
     normalizeForCapture(frame);
@@ -1786,6 +1848,24 @@
     document.addEventListener("click", closeDropdowns);
     $("#clientMenu").addEventListener("click", (e) => e.stopPropagation());
     $("#metricsMenu").addEventListener("click", (e) => e.stopPropagation());
+
+    // currency switch
+    $$("#currencySeg .seg").forEach((s) => s.addEventListener("click", () => setCurrency(s.dataset.cur)));
+
+    // print area selector (gear next to the camera)
+    const shotMenu = $("#shotMenu");
+    if (shotMenu) {
+      shotMenu.addEventListener("click", (e) => e.stopPropagation());
+      $$("#shotMenu input[type=checkbox]").forEach((cb) => {
+        cb.checked = getShotAreas().includes(cb.value);
+        cb.addEventListener("change", () => {
+          const ids = $$("#shotMenu input[type=checkbox]").filter((x) => x.checked).map((x) => x.value);
+          setShotAreas(ids);
+        });
+      });
+      const go = $("#shotGo");
+      if (go) go.addEventListener("click", () => { closeDropdowns(); captureMetrics($("#shotBtn")); });
+    }
 
     // legend toggles
     $$("#rvLegend .legend__item").forEach((b) => b.addEventListener("click", () => {
@@ -1845,7 +1925,9 @@
     // sync controls to state
     selectClient(state.clientId);
     setRange(state.range);
+    $$("#currencySeg .seg").forEach((s) => s.classList.toggle("is-active", s.dataset.cur === CURRENCY));
     switchView(state.view); // restore last view (not always dashboard)
+    refreshFX(); // live BRL→USD/EUR rates, then re-render if needed
 
     // Flush the debounced sheet save if the page is closed/reloaded mid-edit,
     // so the last typed value isn't lost inside the 350ms timer window.

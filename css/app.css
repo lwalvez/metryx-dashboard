@@ -743,3 +743,11 @@ html.dark .cfg-row input { background: #0e131c; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
 }
+
+/* Print area selector popover (gear next to camera) */
+#shotMenu { min-width: 234px; padding: 10px; }
+.shot-menu__t { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--text-3); margin: 2px 4px 8px; }
+.shot-opt { display: flex; align-items: center; gap: 9px; padding: 7px 6px; border-radius: 8px; font-size: .86rem; cursor: pointer; user-select: none; }
+.shot-opt:hover { background: var(--surface-2); }
+.shot-opt input { width: 15px; height: 15px; accent-color: var(--brand); cursor: pointer; }
+#shotGo { width: 100%; margin-top: 8px; justify-content: center; }

@@ -93,9 +93,25 @@
 
         <div class="topbar__actions">
           <!-- Capture metrics -->
-          <button class="icon-btn" id="shotBtn" aria-label="Capturar métricas" title="Tirar print das métricas">
+          <button class="icon-btn" id="shotBtn" aria-label="Capturar métricas" title="Tirar print das áreas selecionadas">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none"><path d="M4 8h3l1.1-2h7.8L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.2" stroke="currentColor" stroke-width="1.7"/></svg>
           </button>
+
+          <!-- Print area selector (gear) -->
+          <div class="dropdown" id="shotDd">
+            <button class="icon-btn dropdown__trigger" id="shotCfgBtn" aria-haspopup="true" aria-expanded="false" aria-label="Configurar print" title="Escolher áreas do print">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.7"/><path d="M12 2.5v3M12 18.5v3M21.5 12h-3M5.5 12h-3M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1M18.7 18.7l-2.1-2.1M7.4 7.4 5.3 5.3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+            </button>
+            <div class="dropdown__menu dropdown__menu--right" id="shotMenu">
+              <p class="shot-menu__t">Áreas do print</p>
+              <label class="shot-opt"><input type="checkbox" value="kpiGrid" checked> Indicadores</label>
+              <label class="shot-opt"><input type="checkbox" value="shot-chart" checked> Receita x Investimento</label>
+              <label class="shot-opt"><input type="checkbox" value="shot-funnel" checked> Funil de conversão</label>
+              <label class="shot-opt"><input type="checkbox" value="shot-channels" checked> Investimento por canal</label>
+              <label class="shot-opt"><input type="checkbox" value="shot-table" checked> Campanhas</label>
+              <button class="btn btn--brand" id="shotGo">Tirar print</button>
+            </div>
+          </div>
 
           <!-- Client selector -->
           <div class="dropdown" id="clientDd">
@@ -112,6 +128,13 @@
             <button role="tab" class="seg is-active" data-range="7">7 dias</button>
             <button role="tab" class="seg" data-range="30">30 dias</button>
             <button role="tab" class="seg" data-range="90">90 dias</button>
+          </div>
+
+          <!-- Currency segmented -->
+          <div class="segmented" role="tablist" aria-label="Moeda" id="currencySeg">
+            <button role="tab" class="seg is-active" data-cur="BRL">R$</button>
+            <button role="tab" class="seg" data-cur="USD">US$</button>
+            <button role="tab" class="seg" data-cur="EUR">€</button>
           </div>
 
           <!-- Metrics popover -->
@@ -167,7 +190,7 @@
 
           <!-- Charts row -->
           <div class="grid grid--2">
-            <section class="card chart-card" aria-label="Receita x Investimento">
+            <section class="card chart-card" id="shot-chart" aria-label="Receita x Investimento">
               <header class="card__head">
                 <div>
                   <h2 class="card__title">Receita x Investimento</h2>
@@ -181,7 +204,7 @@
               <div class="chart" id="comboChart"></div>
             </section>
 
-            <section class="card chart-card" aria-label="Funil de conversão">
+            <section class="card chart-card" id="shot-funnel" aria-label="Funil de conversão">
               <header class="card__head">
                 <div>
                   <h2 class="card__title">Funil de conversão</h2>
@@ -194,7 +217,7 @@
 
           <!-- Channels + table -->
           <div class="grid grid--2">
-            <section class="card" aria-label="Investimento por canal">
+            <section class="card" id="shot-channels" aria-label="Investimento por canal">
               <header class="card__head">
                 <div>
                   <h2 class="card__title">Investimento por canal</h2>
@@ -204,7 +227,7 @@
               <div class="channels" id="channels"></div>
             </section>
 
-            <section class="card" aria-label="Desempenho por campanha">
+            <section class="card" id="shot-table" aria-label="Desempenho por campanha">
               <header class="card__head">
                 <div>
                   <h2 class="card__title">Campanhas</h2>
