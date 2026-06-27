@@ -447,13 +447,11 @@
   /* ============================================================
      AI insights (derived from current data)
      ============================================================ */
-  function renderInsights(d) {
-    const body = $("#aiBody");
-    body.innerHTML = "";
+  function computeInsights(d) {
     const best = d.campaigns[0];
     const worst = [...d.campaigns].sort((a, b) => a.roas - b.roas)[0];
     const topCh = d.channels[0];
-    const insights = [
+    return [
       {
         kind: "good", chip: "Oportunidade", chipCls: "chip-good", t: "Escale a campanha de melhor ROAS",
         b: `<b>${best.name}</b> está com ROAS de <b>${best.roas.toFixed(2).replace(".", ",")}x</b>. Realocar ~15% do orçamento de campanhas de baixo retorno pode aumentar a receita em até <b>${brl(best.receita * 0.15)}</b> no período.`,
@@ -471,7 +469,12 @@
         b: `Receita cresceu <b>${d.delta.receita.toFixed(1).replace(".", ",")}%</b> vs. período anterior, enquanto o CPL ${d.delta.cpl < 0 ? "caiu" : "subiu"} <b>${Math.abs(d.delta.cpl).toFixed(1).replace(".", ",")}%</b>. ${d.delta.cpl < 0 ? "Eficiência melhorando — bom momento para escalar." : "Acompanhe o CPL para manter a margem."}`,
       },
     ];
-    insights.forEach((ins) => {
+  }
+
+  function renderInsights(d) {
+    const body = $("#aiBody");
+    body.innerHTML = "";
+    computeInsights(d).forEach((ins) => {
       const card = el("div", "insight is-" + ins.kind);
       card.innerHTML = `<div class="insight__t">${ins.t}<span class="insight__chip ${ins.chipCls}">${ins.chip}</span></div><div class="insight__b">${ins.b}</div>`;
       body.appendChild(card);
@@ -657,6 +660,250 @@
     $("#addClientCard").addEventListener("click", () => openClientModal("add"));
   }
 
+  /* ============================================================
+     RELATÓRIOS — functional report builder + PDF/PNG export
+     ============================================================ */
+  const REPORT_METRICS = ["invest", "receita", "roas", "cpl", "leads", "ticket"];
+  const reportCfg = { clientId: state.clientId, range: state.range, title: "Relatório de performance" };
+
+  function loadReports() { try { return JSON.parse(localStorage.getItem("metryx-reports") || "[]"); } catch (_) { return []; } }
+  function saveReports(list) { localStorage.setItem("metryx-reports", JSON.stringify(list)); }
+
+  function repKpi(d, id) {
+    const m = METRIC_DEFS[id]; if (!m) return "";
+    const dv = d.delta[m.key] ?? 0;
+    const good = (m.deltaGood === "up" && dv >= 0) || (m.deltaGood === "down" && dv < 0);
+    const arrow = dv >= 0 ? "M5 12l5-5 5 5" : "M5 8l5 5 5-5";
+    return `<div class="report-kpi" style="--mc:${m.color}">
+      <div class="report-kpi__l">${m.label}</div>
+      <div class="report-kpi__v">${m.fmt(d)}</div>
+      <div class="report-kpi__d ${good ? "is-up" : "is-down"}">
+        <svg viewBox="0 0 20 20" width="12" height="12" fill="none"><path d="${arrow}" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        ${Math.abs(dv).toFixed(1).replace(".", ",")}% vs. anterior
+      </div>
+    </div>`;
+  }
+
+  function reportHTML(cfg) {
+    const d = withDeltas(cfg.clientId, cfg.range);
+    const client = (CLIENTS.find((c) => c.id === cfg.clientId) || CLIENTS[0]).name;
+    const now = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+    const kpis = REPORT_METRICS.map((id) => repKpi(d, id)).join("");
+
+    const fSteps = [
+      { name: "Impressões", val: d.impressoes, color: "#3b9cf6", conv: null },
+      { name: "Cliques", val: d.cliques, color: "#7c5cff", conv: d.ctr },
+      { name: "Leads", val: d.leads, color: "#21bfa0", conv: d.convLead },
+    ];
+    const fMax = fSteps[0].val;
+    const funnel = fSteps.map((s) => `
+      <div class="rep-fn">
+        <div class="rep-fn__head"><span><span class="rep-dot" style="background:${s.color}"></span>${s.name}</span><b>${compact(s.val)}</b></div>
+        <div class="rep-fn__bar"><span style="width:${clamp((s.val / fMax) * 100, 6, 100)}%;background:${s.color}"></span></div>
+        ${s.conv != null ? `<div class="rep-fn__c">Conversão: ${(s.conv * 100).toFixed(1).replace(".", ",")}%</div>` : ""}
+      </div>`).join("");
+
+    const chMax = Math.max(...d.channels.map((c) => c.value));
+    const channels = d.channels.map((c) => `
+      <div class="rep-ch">
+        <span class="rep-ch__n"><span class="rep-dot" style="background:${c.color}"></span>${c.name}</span>
+        <span class="rep-ch__t"><span style="width:${clamp((c.value / chMax) * 100, 4, 100)}%;background:${c.color}"></span></span>
+        <span class="rep-ch__v">${brl(c.value)} <small>${(c.share * 100).toFixed(0)}%</small></span>
+      </div>`).join("");
+
+    const camps = d.campaigns.map((c) => {
+      const cls = c.roas >= 5 ? "good" : c.roas >= 3.5 ? "mid" : "bad";
+      return `<tr><td><span class="tag" style="background:${c.color}"></span>${c.name}</td><td class="num">${brl(c.invest)}</td><td class="num">${brl(c.receita)}</td><td class="num"><span class="roas-badge ${cls}">${c.roas.toFixed(2).replace(".", ",")}x</span></td></tr>`;
+    }).join("");
+
+    const ins = computeInsights(d).slice(0, 3).map((i) => `<li class="rep-ins is-${i.kind}"><strong>${i.t}.</strong> ${i.b}</li>`).join("");
+
+    return `
+      <div class="report" id="reportArea">
+        <header class="report__head">
+          <div class="report__brand">
+            <span class="brand-mark" style="background:#7c5cff"><svg viewBox="0 0 24 24" width="18" height="18" fill="none"><path d="M3 17 9 11l4 4 8-8" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M21 7v5M21 7h-5" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <div>
+              <div class="report__title">${cfg.title || "Relatório de performance"}</div>
+              <div class="report__meta">${client} · últimos ${cfg.range} dias</div>
+            </div>
+          </div>
+          <div class="report__date">Gerado em<br><b>${now}</b></div>
+        </header>
+
+        <div class="report__kpis">${kpis}</div>
+
+        <div class="report__cols">
+          <section class="report__sec">
+            <h3 class="report__h">Funil de conversão</h3>
+            ${funnel}
+          </section>
+          <section class="report__sec">
+            <h3 class="report__h">Investimento por canal</h3>
+            ${channels}
+          </section>
+        </div>
+
+        <section class="report__sec">
+          <h3 class="report__h">Campanhas (top ${d.campaigns.length})</h3>
+          <table class="data-table report__table"><thead><tr><th>Campanha</th><th class="num">Invest.</th><th class="num">Receita</th><th class="num">ROAS</th></tr></thead><tbody>${camps}</tbody></table>
+        </section>
+
+        <section class="report__sec">
+          <h3 class="report__h">Resumo executivo</h3>
+          <ul class="rep-ins-list">${ins}</ul>
+        </section>
+
+        <footer class="report__foot">Metryx · Relatório gerado automaticamente · ${now}</footer>
+      </div>`;
+  }
+
+  function generateReport() {
+    const host = $("#reportPreview");
+    if (host) host.innerHTML = reportHTML(reportCfg);
+  }
+
+  async function exportReportPNG() {
+    const area = $("#reportArea");
+    if (!area) return;
+    if (typeof window.html2canvas !== "function") { toast("Captura indisponível", false); return; }
+    const bg = toRGB((getComputedStyle(document.documentElement).getPropertyValue("--bg") || "#0a0d14").trim());
+    const frame = el("div", "export-frame");
+    frame.style.width = Math.max(760, area.scrollWidth) + "px";
+    frame.style.background = bg;
+    frame.appendChild(area.cloneNode(true));
+    document.body.appendChild(frame);
+    normalizeForCapture(frame);
+    try {
+      const canvas = await window.html2canvas(frame, { backgroundColor: bg, scale: 2, logging: false });
+      await new Promise((res) => canvas.toBlob((blob) => {
+        if (!blob) { toast("Falha ao gerar PNG", false); return res(); }
+        const url = URL.createObjectURL(blob);
+        const a = el("a"); a.href = url; a.download = `relatorio-${reportCfg.clientId}-${reportCfg.range}d.png`;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        toast("Relatório PNG baixado"); res();
+      }, "image/png"));
+    } catch (e) { console.error("exportReportPNG:", e); toast("Falha ao gerar PNG", false); }
+    finally { frame.remove(); }
+  }
+
+  function exportReportPDF() {
+    document.body.classList.add("printing");
+    const after = () => { document.body.classList.remove("printing"); window.removeEventListener("afterprint", after); };
+    window.addEventListener("afterprint", after);
+    setTimeout(() => window.print(), 60);
+    setTimeout(after, 1500); // fallback if afterprint never fires
+  }
+
+  function persistCurrentReport() {
+    const list = loadReports();
+    const client = (CLIENTS.find((c) => c.id === reportCfg.clientId) || CLIENTS[0]).name;
+    list.unshift({ id: "r" + Date.now(), title: reportCfg.title || "Relatório", clientId: reportCfg.clientId, clientName: client, range: reportCfg.range, date: new Date().toISOString() });
+    saveReports(list.slice(0, 30));
+    renderSavedReports();
+    toast("Relatório salvo");
+  }
+
+  function renderSavedReports() {
+    const host = $("#repSaved");
+    if (!host) return;
+    const list = loadReports();
+    if (!list.length) { host.innerHTML = `<p class="rep-empty">Nenhum relatório salvo ainda. Gere e clique em <b>Salvar</b>.</p>`; return; }
+    host.innerHTML = list.map((r) => {
+      const dt = new Date(r.date).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+      return `<div class="rep-item" data-open="${r.id}" role="button" tabindex="0">
+        <div class="rep-item__ico"><svg viewBox="0 0 24 24" width="18" height="18" fill="none"><path d="M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M14 3v5h5" stroke="currentColor" stroke-width="1.7"/></svg></div>
+        <div class="rep-item__txt"><div class="rep-item__t">${r.title}</div><div class="rep-item__m">${r.clientName} · ${r.range} dias · ${dt}</div></div>
+        <button class="cc-act cc-act--danger" data-del="${r.id}" aria-label="Excluir" title="Excluir"><svg viewBox="0 0 24 24" width="15" height="15" fill="none"><path d="M5 7h14M10 7V5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2M6 7l1 12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>`;
+    }).join("");
+    $$("[data-open]", host).forEach((it) => {
+      const open = () => {
+        const r = loadReports().find((x) => x.id === it.dataset.open);
+        if (!r) return;
+        reportCfg.clientId = r.clientId; reportCfg.range = r.range; reportCfg.title = r.title;
+        syncReportControls();
+        generateReport();
+        $("#reportPreview").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+      };
+      it.addEventListener("click", (e) => { if (e.target.closest("[data-del]")) return; open(); });
+      it.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
+    });
+    $$("[data-del]", host).forEach((b) => b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      saveReports(loadReports().filter((x) => x.id !== b.dataset.del));
+      renderSavedReports();
+      toast("Relatório excluído");
+    }));
+  }
+
+  function syncReportControls() {
+    const t = $("#repTitle"); if (t) t.value = reportCfg.title;
+    const sel = $("#repClient"); if (sel) sel.value = reportCfg.clientId;
+    $$("#repRange .seg").forEach((s) => s.classList.toggle("is-active", +s.dataset.range === reportCfg.range));
+  }
+
+  function renderRelatorios() {
+    const host = $("#view-generic");
+    host.innerHTML = `
+      <div class="rep">
+        <div class="panel rep-controls">
+          <div class="rep-ctl">
+            <label for="repTitle">Título</label>
+            <input id="repTitle" type="text" maxlength="60" value="${reportCfg.title}" placeholder="Relatório de performance" />
+          </div>
+          <div class="rep-ctl">
+            <label for="repClient">Cliente</label>
+            <select id="repClient" class="rep-select">${CLIENTS.map((c) => `<option value="${c.id}" ${c.id === reportCfg.clientId ? "selected" : ""}>${c.name}</option>`).join("")}</select>
+          </div>
+          <div class="rep-ctl">
+            <label>Período</label>
+            <div class="segmented" id="repRange">
+              <button class="seg ${reportCfg.range === 7 ? "is-active" : ""}" data-range="7">7 dias</button>
+              <button class="seg ${reportCfg.range === 30 ? "is-active" : ""}" data-range="30">30 dias</button>
+              <button class="seg ${reportCfg.range === 90 ? "is-active" : ""}" data-range="90">90 dias</button>
+            </div>
+          </div>
+          <button class="btn btn--brand" id="repGen">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M5 12h14M12 5v14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            Gerar relatório
+          </button>
+        </div>
+
+        <div class="rep-actions">
+          <button class="btn btn--ghost" id="repPdf"><svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M6 9V3h9l3 3v3M6 18v3h12v-3M4 9h16v9H4z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg> Baixar PDF</button>
+          <button class="btn btn--ghost" id="repPng"><svg viewBox="0 0 24 24" width="16" height="16" fill="none"><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.7"/><path d="m3 16 5-4 4 3 3-3 6 5" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="8.5" cy="9" r="1.5" fill="currentColor"/></svg> Baixar PNG</button>
+          <button class="btn btn--ghost" id="repShare"><svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M8.7 10.7 15.3 7M8.7 13.3l6.6 3.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="6" cy="12" r="2.4" stroke="currentColor" stroke-width="1.8"/><circle cx="18" cy="6" r="2.4" stroke="currentColor" stroke-width="1.8"/><circle cx="18" cy="18" r="2.4" stroke="currentColor" stroke-width="1.8"/></svg> Compartilhar</button>
+          <button class="btn btn--brand" id="repSave" style="margin-left:auto"><svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M5 4h11l3 3v13H5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M8 4v5h7M8 20v-6h8v6" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg> Salvar relatório</button>
+        </div>
+
+        <div id="reportPreview" class="rep-preview"></div>
+
+        <section class="rep-saved-wrap">
+          <h3 class="report__h" style="margin:6px 0 12px">Relatórios salvos</h3>
+          <div id="repSaved" class="rep-saved"></div>
+        </section>
+      </div>`;
+
+    generateReport();
+    renderSavedReports();
+
+    $("#repTitle").addEventListener("input", (e) => { reportCfg.title = e.target.value; generateReport(); });
+    $("#repClient").addEventListener("change", (e) => { reportCfg.clientId = e.target.value; generateReport(); });
+    $$("#repRange .seg").forEach((s) => s.addEventListener("click", () => {
+      reportCfg.range = +s.dataset.range; syncReportControls(); generateReport();
+    }));
+    $("#repGen").addEventListener("click", () => { generateReport(); toast("Relatório gerado"); });
+    $("#repPdf").addEventListener("click", exportReportPDF);
+    $("#repPng").addEventListener("click", exportReportPNG);
+    $("#repSave").addEventListener("click", persistCurrentReport);
+    $("#repShare").addEventListener("click", () => {
+      const url = location.href.split("#")[0].split("?")[0] + "?client=" + reportCfg.clientId + "&range=" + reportCfg.range;
+      (navigator.clipboard?.writeText(url) || Promise.reject()).then(() => toast("Link do relatório copiado")).catch(() => toast("Link: " + url));
+    });
+  }
+
   function renderEmptyView(view) {
     const host = $("#view-generic");
     const copy = {
@@ -701,6 +948,7 @@
     generic.classList.toggle("is-active", !isDash);
     if (isDash) renderDashboard();
     else if (view === "clientes") renderClientes();
+    else if (view === "relatorios") renderRelatorios();
     else renderEmptyView(view);
     if (view === "insights") openDrawer();
     closeNav();
