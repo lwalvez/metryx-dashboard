@@ -770,3 +770,15 @@ html.dark .cfg-row input { background: #0e131c; }
 /* Alerts import/export header */
 .al-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
 .al-io { display: flex; gap: 8px; }
+
+/* Per-client goals on client cards */
+.cc-goals { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
+.cc-goal__row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: .78rem; color: var(--text-3); }
+.cc-goal__in { width: 96px; height: 30px; padding: 0 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: inherit; font-size: .82rem; text-align: right; }
+.cc-goal__in:focus { outline: none; border-color: var(--brand); }
+.cc-bar { height: 6px; border-radius: 99px; background: var(--surface-2); overflow: hidden; margin-top: 6px; }
+.cc-bar > span { display: block; height: 100%; border-radius: 99px; }
+.cc-bar__lbl { font-size: .72rem; color: var(--text-3); margin-top: 4px; }
+.al-badge { font-size: .72rem; font-weight: 600; padding: 3px 8px; border-radius: 99px; white-space: nowrap; }
+.al-badge.is-ok { background: color-mix(in srgb, var(--c-receita) 20%, transparent); color: var(--c-receita); }
+.al-badge.is-bad { background: color-mix(in srgb, #f1564f 20%, transparent); color: #f1564f; }

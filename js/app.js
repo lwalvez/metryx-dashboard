@@ -715,11 +715,23 @@
     closeClientModal();
   }
 
+  // Per-client goals (ROAS / Receita targets), persisted separately from clients.
+  function loadGoals() { try { return JSON.parse(localStorage.getItem("metryx-goals") || "{}") || {}; } catch (_) { return {}; } }
+  function saveGoals(g) { try { localStorage.setItem("metryx-goals", JSON.stringify(g)); } catch (_) {} }
+  function goalsFor(id) { return loadGoals()[id] || {}; }
+  function goalBar(cur, target, fmt) {
+    const pct = target > 0 ? clamp((cur / target) * 100, 0, 100) : 0;
+    const hit = cur >= target && target > 0;
+    return `<div class="cc-bar"><span style="width:${pct.toFixed(0)}%;background:${hit ? "var(--c-receita)" : "var(--brand)"}"></span></div>
+      <div class="cc-bar__lbl">${fmt(cur)} / ${fmt(target)} · ${pct.toFixed(0)}%${hit ? " ✓" : ""}</div>`;
+  }
+
   function renderClientes() {
     const host = $("#view-generic");
     const list = CLIENTS.filter((c) => c.id !== "all");
     const cards = list.map((c) => {
       const d = withDeltas(c.id, state.range);
+      const g = goalsFor(c.id);
       return `<article class="client-card" data-goto="${c.id}" role="button" tabindex="0" aria-label="Abrir ${c.name}">
         <div class="client-card__actions">
           <button class="cc-act" data-edit="${c.id}" aria-label="Renomear ${c.name}" title="Renomear">
@@ -736,6 +748,16 @@
         <div class="client-card__stats">
           <div class="client-card__stat"><div class="l">Investimento</div><div class="v">${brl(d.invest)}</div></div>
           <div class="client-card__stat"><div class="l">Receita</div><div class="v">${brl(d.receita)}</div></div>
+        </div>
+        <div class="cc-goals">
+          <div class="cc-goal">
+            <div class="cc-goal__row"><span>Meta ROAS</span><input type="number" step="0.1" min="0" class="cc-goal__in" data-goal="roas" data-c="${c.id}" value="${g.roas || ""}" placeholder="—" /></div>
+            ${g.roas ? goalBar(d.roas, g.roas, (x) => x.toFixed(2).replace(".", ",") + "x") : ""}
+          </div>
+          <div class="cc-goal">
+            <div class="cc-goal__row"><span>Meta Receita</span><input type="number" step="100" min="0" class="cc-goal__in" data-goal="receita" data-c="${c.id}" value="${g.receita || ""}" placeholder="—" /></div>
+            ${g.receita ? goalBar(d.receita, g.receita, brl) : ""}
+          </div>
         </div>
       </article>`;
     }).join("");
@@ -757,8 +779,20 @@
 
     $$("[data-goto]", host).forEach((card) => {
       const go = () => { selectClient(card.dataset.goto); switchView("dashboard"); };
-      card.addEventListener("click", (e) => { if (e.target.closest(".cc-act")) return; go(); });
-      card.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
+      card.addEventListener("click", (e) => { if (e.target.closest(".cc-act") || e.target.closest(".cc-goals")) return; go(); });
+      card.addEventListener("keydown", (e) => { if ((e.key === "Enter" || e.key === " ") && !e.target.closest(".cc-goals")) { e.preventDefault(); go(); } });
+    });
+    $$(".cc-goal__in", host).forEach((inp) => {
+      inp.addEventListener("click", (e) => e.stopPropagation());
+      inp.addEventListener("change", () => {
+        const cid = inp.dataset.c, key = inp.dataset.goal;
+        const g = loadGoals(); g[cid] = g[cid] || {};
+        const v = parseFloat(inp.value);
+        if (isFinite(v) && v > 0) g[cid][key] = v; else delete g[cid][key];
+        if (!Object.keys(g[cid]).length) delete g[cid];
+        saveGoals(g); renderClientes();
+        toast("Meta salva");
+      });
     });
     $$("[data-edit]", host).forEach((b) => b.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -1589,6 +1623,24 @@
     const fired = rules.filter((r) => r.enabled && alertFires(r, d));
     const client = (CLIENTS.find((c) => c.id === state.clientId) || CLIENTS[0]).name;
 
+    const goals = loadGoals();
+    const metaItems = [];
+    CLIENTS.filter((c) => c.id !== "all" && goals[c.id]).forEach((c) => {
+      const cd = withDeltas(c.id, state.range); const g = goals[c.id];
+      if (g.roas) metaItems.push({ client: c.name, color: c.color, label: "ROAS", cur: cd.roas, tgt: g.roas, fmt: (x) => x.toFixed(2).replace(".", ",") + "x", hit: cd.roas >= g.roas });
+      if (g.receita) metaItems.push({ client: c.name, color: c.color, label: "Receita", cur: cd.receita, tgt: g.receita, fmt: brl, hit: cd.receita >= g.receita });
+    });
+    const metasHTML = metaItems.length ? `
+        <section class="panel">
+          <h3 class="report__h" style="margin:0 0 14px">Metas dos clientes</h3>
+          <div class="al-rules">${metaItems.map((it) => `
+            <div class="al-rule">
+              <span class="al-rule__dot ${it.hit ? "ok" : "fire"}"></span>
+              <span class="al-rule__txt"><span class="rep-dot" style="background:${it.color}"></span> ${it.client} · ${it.label} <small>${it.fmt(it.cur)} / meta ${it.fmt(it.tgt)}</small></span>
+              <span class="al-badge ${it.hit ? "is-ok" : "is-bad"}">${it.hit ? "Atingida" : "Abaixo"}</span>
+            </div>`).join("")}</div>
+        </section>` : "";
+
     const activeHTML = fired.length ? fired.map((r) => {
       const m = ALERT_METRICS.find((x) => x.id === r.metric);
       return `<div class="al-fire">
@@ -1615,7 +1667,7 @@
           <h3 class="report__h" style="margin:0 0 14px">Alertas ativos${fired.length ? ` · ${fired.length}` : ""}</h3>
           <div class="al-fires">${activeHTML}</div>
         </section>
-
+${metasHTML}
         <section class="panel">
           <div class="al-head">
             <h3 class="report__h" style="margin:0">Regras de alerta</h3>
