@@ -6,7 +6,25 @@
   <meta name="color-scheme" content="dark light" />
   <meta name="description" content="Metryx — painel de performance de tráfego pago. Investimento, receita, ROAS e funil de conversão em um só lugar." />
   <title>Dashboard · Metryx</title>
-  <link rel="icon" href="images/favicon.ico" />
+  <link rel="canonical" href="https://metryx-app.vercel.app/" />
+  <meta name="theme-color" content="#0a0d14" />
+  <!-- Open Graph / Twitter -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Metryx" />
+  <meta property="og:title" content="Metryx — Dashboard de tráfego pago" />
+  <meta property="og:description" content="Investimento, receita, ROAS e funil de conversão num só painel." />
+  <meta property="og:image" content="https://metryx-app.vercel.app/images/og-cover.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:url" content="https://metryx-app.vercel.app/" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Metryx — Dashboard de tráfego pago" />
+  <meta name="twitter:description" content="Investimento, receita, ROAS e funil de conversão num só painel." />
+  <meta name="twitter:image" content="https://metryx-app.vercel.app/images/og-cover.png" />
+  <link rel="icon" href="images/favicon.ico" sizes="any" />
+  <link rel="icon" href="images/favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="images/apple-touch-icon.png" />
+  <link rel="manifest" href="manifest.json" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet" />
@@ -25,6 +43,7 @@
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none"><path d="M3 17 9 11l4 4 8-8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M21 7v5M21 7h-5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </span>
         <span class="brand-name">Metryx</span>
+        <span class="brand-demo" title="Dados de demonstração, gerados localmente">demo</span>
         <button class="sidebar__close" id="sidebarClose" aria-label="Fechar menu">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         </button>
@@ -348,10 +367,10 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-  <script src="js/supabase-config.js"></script>
-  <script src="js/auth-client.js"></script>
-  <script src="js/guard.js"></script>
-  <script src="js/html2canvas.min.js"></script>
-  <script src="js/app.js"></script>
+  <script defer src="js/supabase-config.js"></script>
+  <script defer src="js/auth-client.js"></script>
+  <script defer src="js/guard.js"></script>
+  <!-- html2canvas (196K) is lazy-loaded on first print/capture, not on page load -->
+  <script defer src="js/app.js"></script>
 </body>
 </html>

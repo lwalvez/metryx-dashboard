@@ -13,6 +13,46 @@
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+  // html2canvas is ~196K — load it on demand (first print/capture) instead of
+  // blocking every page load. Returns a promise that resolves once it's ready.
+  let _h2cPromise = null;
+  function ensureHtml2Canvas() {
+    if (typeof window.html2canvas === "function") return Promise.resolve();
+    if (_h2cPromise) return _h2cPromise;
+    _h2cPromise = new Promise((res, rej) => {
+      const s = document.createElement("script");
+      s.src = "js/html2canvas.min.js";
+      s.onload = () => res();
+      s.onerror = () => { _h2cPromise = null; rej(new Error("html2canvas load failed")); };
+      document.head.appendChild(s);
+    });
+    return _h2cPromise;
+  }
+
+  // Promise-based confirm dialog matching the app UI (replaces window.confirm).
+  function confirmModal(message, { title = "Confirmar", ok = "Confirmar", danger = false } = {}) {
+    return new Promise((resolve) => {
+      const back = el("div", "cmodal-back");
+      back.innerHTML =
+        `<div class="cmodal" role="dialog" aria-modal="true" aria-label="${title}">
+           <h3 class="cmodal__title">${title}</h3>
+           <p class="cmodal__msg">${message}</p>
+           <div class="cmodal__actions">
+             <button class="btn btn--ghost" data-act="cancel">Cancelar</button>
+             <button class="btn ${danger ? "btn--danger" : "btn--brand"}" data-act="ok">${ok}</button>
+           </div>
+         </div>`;
+      const close = (val) => { back.classList.remove("is-on"); setTimeout(() => back.remove(), 180); document.removeEventListener("keydown", onKey); resolve(val); };
+      const onKey = (e) => { if (e.key === "Escape") close(false); };
+      back.addEventListener("click", (e) => { if (e.target === back) close(false); });
+      back.querySelector('[data-act="cancel"]').addEventListener("click", () => close(false));
+      back.querySelector('[data-act="ok"]').addEventListener("click", () => close(true));
+      document.addEventListener("keydown", onKey);
+      document.body.appendChild(back);
+      requestAnimationFrame(() => { back.classList.add("is-on"); back.querySelector('[data-act="ok"]').focus(); });
+    });
+  }
+
   // Number + money formatters. Underlying data is in BRL; `money()` converts to
   // the chosen display currency with a live FX rate and localised formatting.
   const nf = new Intl.NumberFormat("pt-BR");
@@ -1003,11 +1043,11 @@
       e.stopPropagation();
       openClientModal("edit", CLIENTS.find((c) => c.id === b.dataset.edit));
     }));
-    $$("[data-del]", host).forEach((b) => b.addEventListener("click", (e) => {
+    $$("[data-del]", host).forEach((b) => b.addEventListener("click", async (e) => {
       e.stopPropagation();
       const c = CLIENTS.find((x) => x.id === b.dataset.del);
       if (!c) return;
-      if (confirm(`Remover o cliente "${c.name}"? Esta ação não pode ser desfeita.`)) {
+      if (await confirmModal(`Remover o cliente <b>${c.name}</b>? Esta ação não pode ser desfeita.`, { title: "Remover cliente", ok: "Remover", danger: true })) {
         deleteClient(c.id);
         buildClientMenu();
         renderClientes();
@@ -1185,7 +1225,7 @@
   async function exportReportPNG() {
     const area = $("#reportArea");
     if (!area) return;
-    if (typeof window.html2canvas !== "function") { toast("Captura indisponível", false); return; }
+    try { await ensureHtml2Canvas(); } catch (_) { toast("Captura indisponível", false); return; }
     const bg = toRGB((getComputedStyle(document.documentElement).getPropertyValue("--bg") || "#0a0d14").trim());
     const frame = el("div", "export-frame");
     frame.style.width = Math.max(760, area.scrollWidth) + "px";
@@ -1739,11 +1779,11 @@
         <p class="sec-sub"><b>${connected}</b> de ${INTEGRATIONS.length} fontes conectadas. Conecte suas contas de anúncio para sincronizar métricas.</p>
         <div class="intg-grid">${cards}</div>
       </div>`;
-    $$("[data-intg]", host).forEach((b) => b.addEventListener("click", () => {
+    $$("[data-intg]", host).forEach((b) => b.addEventListener("click", async () => {
       const id = b.dataset.intg; const s = loadIntegrations();
-      const now = s[id]?.connected;
-      if (now) { if (!confirm("Desconectar " + INTEGRATIONS.find((x) => x.id === id).name + "?")) return; s[id] = { connected: false }; toast("Integração desconectada"); }
-      else { s[id] = { connected: true, since: Date.now() }; toast(INTEGRATIONS.find((x) => x.id === id).name + " conectado"); }
+      const now = s[id]?.connected; const name = INTEGRATIONS.find((x) => x.id === id).name;
+      if (now) { if (!(await confirmModal("Desconectar <b>" + name + "</b>?", { title: "Desconectar fonte", ok: "Desconectar", danger: true }))) return; s[id] = { connected: false }; toast("Integração desconectada"); }
+      else { s[id] = { connected: true, since: Date.now() }; toast(name + " conectado"); }
       saveIntegrations(s); renderIntegracoes();
     }));
   }
@@ -1987,8 +2027,8 @@ ${metasHTML}
       toast("Configurações salvas");
     });
     $("#cfgLogout").addEventListener("click", () => { if (window.MetryxAuth) window.MetryxAuth.signOut(); });
-    $("#cfgClear").addEventListener("click", () => {
-      if (!confirm("Limpar todos os dados locais do Metryx? Isso não pode ser desfeito.")) return;
+    $("#cfgClear").addEventListener("click", async () => {
+      if (!(await confirmModal("Limpar todos os dados locais do Metryx? Isso não pode ser desfeito.", { title: "Limpar dados", ok: "Limpar tudo", danger: true }))) return;
       Object.keys(localStorage).filter((k) => k.indexOf("metryx-") === 0 && k !== "metryx-session").forEach((k) => localStorage.removeItem(k));
       toast("Dados locais limpos");
       setTimeout(() => location.reload(), 700);
@@ -2260,7 +2300,7 @@ ${metasHTML}
   function setShotAreas(ids) { try { localStorage.setItem("metryx-shot-areas", JSON.stringify(ids)); } catch (_) {} }
 
   async function captureMetrics(btn) {
-    if (typeof window.html2canvas !== "function") { toast("Captura indisponível", false); return; }
+    try { await ensureHtml2Canvas(); } catch (_) { toast("Captura indisponível", false); return; }
     const nodes = getShotAreas().map((id) => $("#" + id)).filter(Boolean);
     if (!nodes.length) { toast("Selecione ao menos uma área", false); return; }
 
@@ -2484,4 +2524,9 @@ ${metasHTML}
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
+
+  // PWA: register service worker for offline shell (ignored on file://).
+  if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+    window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+  }
 })();

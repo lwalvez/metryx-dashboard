@@ -170,4 +170,9 @@
 
   setMode("signin");
   emailEl.focus();
+
+  // PWA: register service worker (ignored on file://).
+  if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+    window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+  }
 })();
