@@ -1,6 +1,6 @@
 /* Metryx service worker — offline shell + stale-while-revalidate.
    Bump CACHE on each deploy to invalidate old assets. */
-const CACHE = "metryx-v3";
+const CACHE = "metryx-v4";
 const CORE = [
   "./",
   "./index.html",

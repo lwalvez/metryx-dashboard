@@ -270,6 +270,19 @@
     const scI = d.invest > 0 ? sInv / d.invest : 1;
     const scR = d.receita > 0 ? sRec / d.receita : 1;
     d.series = d.series.map((p) => ({ date: p.date, invest: p.invest * scI, receita: p.receita * scR }));
+    // Real daily series from the Meta sync replaces the scaled mock shape.
+    if (clientId !== "all") {
+      let ms = null; try { ms = JSON.parse(localStorage.getItem("metryx-meta-series:" + clientId) || "null"); } catch (_) {}
+      if (Array.isArray(ms) && ms.length >= 2) {
+        const days = ms.slice(-d.series.length).map((p) => ({ date: new Date(p.date + "T12:00:00"), invest: +p.invest || 0, receita: +p.receita || 0 }));
+        const apiRec = days.reduce((s, p) => s + p.receita, 0);
+        if (sRec > 0 && apiRec <= 0) { // manual receita: spread it proportionally to spend
+          const invT = days.reduce((s, p) => s + p.invest, 0) || 1;
+          days.forEach((p) => (p.receita = (p.invest / invT) * sRec));
+        }
+        d.series = days;
+      }
+    }
     d.invest = sInv;
     d.receita = sRec;
     d.roas = d.invest > 0 ? d.receita / d.invest : 0;
@@ -1867,10 +1880,175 @@
   }
   function saveIntegrations(o) { localStorage.setItem("metryx-integrations", JSON.stringify(o)); }
 
+  /* ---------- Meta Ads — real sync via Graph API (CORS-enabled) ----------
+     One System User token (Business Manager) + one ad account id per client.
+     Sync writes the same localStorage the CSV import uses, so the whole
+     dashboard pipeline (planilha → applySheetOverride) works unchanged. */
+  const META_API = "https://graph.facebook.com/v21.0";
+  const metaToken = () => localStorage.getItem("metryx-meta-token") || "";
+  const metaAcct = (id) => (localStorage.getItem("metryx-meta-acct:" + id) || "").trim();
+  const metaSeriesKey = (id) => "metryx-meta-series:" + id;
+  const metaLastKey = (id) => "metryx-meta-last:" + id;
+  const metaConfigured = (id) => !!(metaToken() && metaAcct(id));
+  const metaIsOn = () => !!metaToken() && CLIENTS.slice(1).some((c) => metaAcct(c.id));
+  const metaSyncBusy = new Set();
+
+  // Meta repeats one conversion under several action_type aliases (purchase /
+  // omni_purchase / pixel_purchase) — summing double-counts. Take the first
+  // alias that exists, in priority order.
+  function pickAction(arr, types) {
+    for (const t of types) { const f = (arr || []).find((a) => a.action_type === t); if (f) return +f.value || 0; }
+    return 0;
+  }
+  const META_LEAD_TYPES = ["onsite_conversion.messaging_conversation_started_7d", "lead", "onsite_conversion.lead_grouped", "onsite_web_lead", "offsite_conversion.fb_pixel_lead"];
+  const META_PURCHASE_TYPES = ["omni_purchase", "purchase", "offsite_conversion.fb_pixel_purchase"];
+
+  async function metaFetchAll(url, maxPages) {
+    const out = [];
+    for (let p = 0; p < (maxPages || 5) && url; p++) {
+      const res = await fetch(url);
+      const js = await res.json();
+      if (js.error) throw new Error(js.error.message || "Graph API error");
+      out.push(...(js.data || []));
+      url = js.paging && js.paging.next;
+    }
+    return out;
+  }
+
+  // Pull per-campaign totals (→ planilha rows) and a 90-day daily series
+  // (→ real chart) for one client, persist both. Receita typed manually in
+  // the sheet survives when the API has no purchase value for the campaign.
+  async function metaSyncClient(clientId, range) {
+    const token = metaToken(), acct = metaAcct(clientId).replace(/^act_/, "");
+    if (!token || !acct) return false;
+    const iso = (d) => d.toISOString().slice(0, 10);
+    const until = iso(new Date());
+    const base = `${META_API}/act_${acct}/insights`;
+    const tok = `access_token=${encodeURIComponent(token)}`;
+    const tr = (days) => `time_range=${encodeURIComponent(JSON.stringify({ since: iso(new Date(Date.now() - (days - 1) * 86400000)), until }))}`;
+
+    const camps = await metaFetchAll(`${base}?level=campaign&fields=campaign_name,spend,impressions,inline_link_clicks,actions,action_values&${tr(range)}&limit=100&${tok}`);
+    const prev = {};
+    try { (JSON.parse(localStorage.getItem(sheetKey(clientId)) || "[]") || []).forEach((r) => { if (r && r.campanha) prev[r.campanha] = r; }); } catch (_) {}
+    const rows = camps.map((c) => {
+      const receita = pickAction(c.action_values, META_PURCHASE_TYPES);
+      const old = prev[c.campaign_name];
+      return {
+        campanha: c.campaign_name || "Campanha",
+        canal: "Meta Ads",
+        invest: +c.spend || 0,
+        receita: receita > 0 ? receita : (old ? +old.receita || 0 : 0),
+        leads: Math.round(pickAction(c.actions, META_LEAD_TYPES)),
+        impressoes: +c.impressions || 0,
+        cliques: +c.inline_link_clicks || 0,
+      };
+    });
+
+    const daily = await metaFetchAll(`${base}?time_increment=1&fields=spend,action_values&${tr(90)}&limit=100&${tok}`, 3);
+    const series = daily.map((p) => ({ date: p.date_start, invest: +p.spend || 0, receita: pickAction(p.action_values, META_PURCHASE_TYPES) }));
+
+    if (rows.length) localStorage.setItem(sheetKey(clientId), JSON.stringify(rows));
+    if (series.length) localStorage.setItem(metaSeriesKey(clientId), JSON.stringify(series));
+    localStorage.setItem(metaLastKey(clientId), JSON.stringify({ ts: Date.now(), range }));
+    return rows.length > 0 || series.length > 0;
+  }
+
+  // Sync the selected client — or every configured one — then re-render.
+  async function metaSync({ silent = false, all = false } = {}) {
+    const pool = all || state.clientId === "all" ? CLIENTS.slice(1) : CLIENTS.filter((c) => c.id === state.clientId);
+    const ids = pool.map((c) => c.id).filter((id) => metaConfigured(id) && !metaSyncBusy.has(id));
+    if (!ids.length) { if (!silent) toast("Nenhuma conta Meta configurada", false); return false; }
+    ids.forEach((id) => metaSyncBusy.add(id));
+    let ok = 0, err = null;
+    for (const id of ids) {
+      try { if (await metaSyncClient(id, state.range)) ok++; }
+      catch (e) { err = e; console.warn("[meta sync]", id, e); }
+      finally { metaSyncBusy.delete(id); }
+    }
+    if (ok) { rerender(); if (!silent) toast(`Meta Ads sincronizado (${ok} conta${ok > 1 ? "s" : ""})`); }
+    else if (!silent) toast(err ? "Meta: " + err.message : "Falha na sincronização", false);
+    return ok > 0;
+  }
+
+  // Auto refresh: when the dashboard renders, pull fresh data for any visible
+  // configured client that is stale (>45 min) or was synced for another range.
+  const META_STALE_MS = 45 * 60 * 1000;
+  function maybeMetaAutoSync() {
+    const pool = state.clientId === "all" ? CLIENTS.slice(1) : CLIENTS.filter((c) => c.id === state.clientId);
+    const stale = pool.some((c) => {
+      if (!metaConfigured(c.id)) return false;
+      let last = null; try { last = JSON.parse(localStorage.getItem(metaLastKey(c.id)) || "null"); } catch (_) {}
+      return !last || Date.now() - last.ts > META_STALE_MS || last.range !== state.range;
+    });
+    if (stale) metaSync({ silent: true });
+  }
+
+  function metaConfigModal() {
+    const esc = (v) => String(v || "").replace(/"/g, "&quot;");
+    const back = el("div", "cmodal-back");
+    const rows = CLIENTS.slice(1).map((c) =>
+      `<label class="meta-row"><span>${c.name}</span><input type="text" data-meta-acct="${c.id}" placeholder="ID da conta (números ou act_…)" value="${esc(metaAcct(c.id))}" /></label>`).join("");
+    back.innerHTML = `<div class="cmodal cmodal--wide" role="dialog" aria-modal="true" aria-label="Conectar Meta Ads">
+      <h3 class="cmodal__title">Meta Ads — conexão via API</h3>
+      <p class="cmodal__msg">Gere um token de <b>usuário de sistema</b> no Business Manager (Configurações do negócio → Usuários do sistema → Gerar token, permissão <b>ads_read</b>, expiração "nunca"). O ID da conta está no Gerenciador de Anúncios. Tudo fica salvo apenas neste navegador.</p>
+      <label class="meta-row"><span>Token</span><input type="password" id="metaTok" placeholder="EAAB…" value="${esc(metaToken())}" autocomplete="off" /></label>
+      <div class="meta-rows">${rows}</div>
+      <div class="cmodal__actions">
+        <button class="btn btn--ghost" data-act="cancel">Cancelar</button>
+        <button class="btn btn--danger" data-act="off" ${metaToken() ? "" : "hidden"}>Desconectar</button>
+        <button class="btn btn--brand" data-act="ok">Salvar e sincronizar</button>
+      </div></div>`;
+    const close = () => { back.classList.remove("is-on"); setTimeout(() => back.remove(), 180); };
+    back.addEventListener("click", (e) => { if (e.target === back) close(); });
+    back.querySelector('[data-act="cancel"]').addEventListener("click", close);
+    back.querySelector('[data-act="off"]').addEventListener("click", async () => {
+      close();
+      if (!(await confirmModal("Remover o token e desativar a sincronização automática? As contas por cliente ficam salvas.", { title: "Desconectar Meta Ads", ok: "Desconectar", danger: true }))) return;
+      localStorage.removeItem("metryx-meta-token");
+      const s = loadIntegrations(); s.meta = { connected: false }; saveIntegrations(s);
+      toast("Meta Ads desconectado"); renderIntegracoes();
+    });
+    back.querySelector('[data-act="ok"]').addEventListener("click", () => {
+      const tokv = $("#metaTok", back).value.trim();
+      if (tokv) localStorage.setItem("metryx-meta-token", tokv); else localStorage.removeItem("metryx-meta-token");
+      $$("[data-meta-acct]", back).forEach((inp) => {
+        const id = inp.dataset.metaAcct, v = inp.value.trim();
+        if (v) localStorage.setItem("metryx-meta-acct:" + id, v); else localStorage.removeItem("metryx-meta-acct:" + id);
+      });
+      const s = loadIntegrations(); s.meta = { connected: metaIsOn(), since: (s.meta && s.meta.since) || Date.now() }; saveIntegrations(s);
+      close();
+      if (metaIsOn()) { toast("Configuração salva — sincronizando…"); metaSync({ all: true }).finally(() => { if (state.view === "integracoes") renderIntegracoes(); }); }
+      else { toast("Configuração salva"); renderIntegracoes(); }
+    });
+    document.body.appendChild(back);
+    requestAnimationFrame(() => { back.classList.add("is-on"); $("#metaTok", back).focus(); });
+  }
+
   function renderIntegracoes() {
     const st = loadIntegrations();
-    const connected = INTEGRATIONS.filter((i) => st[i.id]?.connected).length;
+    const metaOn = metaIsOn();
+    const metaLast = Math.max(0, ...CLIENTS.slice(1).map((c) => { try { return (JSON.parse(localStorage.getItem(metaLastKey(c.id)) || "null") || {}).ts || 0; } catch (_) { return 0; } }));
+    const connected = INTEGRATIONS.filter((i) => (i.id === "meta" ? metaOn : st[i.id]?.connected)).length;
     const cards = INTEGRATIONS.map((i) => {
+      // Meta is a REAL integration (Graph API); the rest are visual toggles.
+      if (i.id === "meta") {
+        const since = metaOn && metaLast
+          ? "Última sincronização " + new Date(metaLast).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
+          : metaOn ? "Aguardando primeira sincronização" : "Sincronização automática via Graph API";
+        return `<article class="intg ${metaOn ? "is-on" : ""}">
+          <div class="intg__top">
+            <span class="intg__logo" style="background:color-mix(in srgb, ${i.color} 18%, transparent); color:${i.color}">${i.ab}</span>
+            <span class="intg__status ${metaOn ? "on" : "off"}">${metaOn ? "Conectado · API" : "Desconectado"}</span>
+          </div>
+          <div class="intg__name">${i.name}</div>
+          <div class="intg__desc">${i.desc}</div>
+          <div class="intg__since">${since}</div>
+          <div class="intg__btns">
+            <button class="btn ${metaOn ? "btn--ghost" : "btn--brand"} intg__btn" data-meta-cfg>${metaOn ? "Configurar" : "Conectar"}</button>
+            ${metaOn ? `<button class="btn btn--brand intg__btn" data-meta-sync>Sincronizar</button>` : ""}
+          </div>
+        </article>`;
+      }
       const c = st[i.id]?.connected;
       const since = st[i.id]?.since ? new Date(st[i.id].since).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }) : null;
       return `<article class="intg ${c ? "is-on" : ""}">
@@ -1897,6 +2075,13 @@
       else { s[id] = { connected: true, since: Date.now() }; toast(name + " conectado"); }
       saveIntegrations(s); renderIntegracoes();
     }));
+    const cfgB = $("[data-meta-cfg]", host);
+    if (cfgB) cfgB.addEventListener("click", metaConfigModal);
+    const syB = $("[data-meta-sync]", host);
+    if (syB) syB.addEventListener("click", () => {
+      syB.disabled = true; syB.textContent = "Sincronizando…";
+      metaSync({ all: true }).finally(() => { if (state.view === "integracoes") renderIntegracoes(); });
+    });
   }
 
   /* ============================================================
@@ -2183,6 +2368,7 @@ ${metasHTML}
     renderCumRev(d);
     renderDashInsights(d);
     renderInsights(d);
+    maybeMetaAutoSync();
   }
 
   function switchView(view) {

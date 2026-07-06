@@ -518,6 +518,17 @@ html.dark .m-field input { background: #0e131c; }
 .btn--danger { background: var(--neg); color: #fff; border-color: transparent; }
 .btn--danger:hover { filter: brightness(1.08); }
 
+/* Meta Ads config modal */
+.cmodal--wide { width: min(560px, 100%); }
+.meta-rows { display: flex; flex-direction: column; gap: 10px; max-height: 260px; overflow: auto; margin: 12px 0 18px; }
+.meta-row { display: flex; align-items: center; gap: 12px; }
+.meta-row span { flex: 0 0 130px; font-size: .85rem; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.meta-row input { flex: 1; min-width: 0; height: 38px; padding: 0 12px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font-size: .88rem; }
+html.dark .meta-row input { background: #0e131c; }
+.meta-row input:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 24%, transparent); }
+.intg__btns { display: flex; gap: 8px; margin-top: auto; }
+.intg__btns .intg__btn { flex: 1; margin-top: 0; }
+
 .hide-sm { display: inline; }
 
 /* ============================ RELATÓRIOS ============================ */
