@@ -266,9 +266,19 @@
     if (sInv > 0) d.invest = sInv;
     if (sRec > 0) d.receita = sRec;
     d.roas = d.invest > 0 ? d.receita / d.invest : 0;
-    if (sLeads > 0) { d.leads = sLeads; d.cpl = d.invest / sLeads; }
+    if (sLeads > 0) { d.leads = sLeads; d.cpl = d.invest / sLeads; d.resultados = sLeads; d.custoResultado = d.cpl; }
     d.impressoes *= scI; d.cliques *= scI; d.pageViews *= scI;
     if (d.impressoes > 0) d.cpm = (d.invest / d.impressoes) * 1000;
+    // Real impressions/clicks from an imported ads CSV beat the scaled mock.
+    const sImp = rows.reduce((s, r) => s + n(r.impressoes), 0);
+    const sCli = rows.reduce((s, r) => s + n(r.cliques), 0);
+    if (sImp > 0) { d.impressoes = sImp; d.cpm = (d.invest / sImp) * 1000; }
+    if (sCli > 0) {
+      d.cliques = sCli;
+      d.pageViews = sCli * d.connectRate;
+      if (d.leads > 0) { d.convLead = d.leads / sCli; d.txConvPagina = d.leads / d.pageViews; }
+    }
+    if (sImp > 0 && sCli > 0) d.ctr = sCli / sImp;
 
     const chMeta = {}; CHANNELS.forEach((c) => (chMeta[c.name] = c.color));
     const byCanal = {};
@@ -1521,9 +1531,9 @@
   function recalcTotals() { $("#plFoot").innerHTML = sheet.length ? totalsHTML() : ""; }
 
   function exportSheetCSV() {
-    const head = ["Campanha", "Canal", "Investimento", "Receita", "Leads"];
+    const head = ["Campanha", "Canal", "Investimento", "Receita", "Leads", "Impressões", "Cliques"];
     const esc = (v) => { v = String(v ?? ""); return /[",;\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
-    const lines = [head.join(",")].concat(sheet.map((r) => [r.campanha, r.canal, num(r.invest), num(r.receita), num(r.leads)].map(esc).join(",")));
+    const lines = [head.join(",")].concat(sheet.map((r) => [r.campanha, r.canal, num(r.invest), num(r.receita), num(r.leads), num(r.impressoes), num(r.cliques)].map(esc).join(",")));
     const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = el("a"); a.href = url; a.download = `planilha-${sheetClientId}.csv`; document.body.appendChild(a); a.click(); a.remove();
@@ -1531,36 +1541,127 @@
     toast("CSV exportado");
   }
 
-  function parseCSV(text) {
+  // One delimiter per file (tab > ; > ,) so BR CSVs with unquoted decimal
+  // commas ("347,14") don't get split mid-number.
+  function detectDelim(text) {
+    const line = text.split(/\r?\n/).find((l) => l.trim()) || "";
+    let q = false; const cnt = { "\t": 0, ";": 0, ",": 0 };
+    for (const ch of line) { if (ch === '"') q = !q; else if (!q && ch in cnt) cnt[ch]++; }
+    return cnt["\t"] ? "\t" : cnt[";"] ? ";" : ",";
+  }
+  function parseCSV(text, delim) {
+    delim = delim || ",";
     const rows = []; let row = [], cur = "", q = false;
     for (let i = 0; i < text.length; i++) {
       const ch = text[i];
       if (q) { if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; }
       else if (ch === '"') q = true;
-      else if (ch === "," || ch === ";") { row.push(cur); cur = ""; }
+      else if (ch === delim) { row.push(cur); cur = ""; }
       else if (ch === "\n") { row.push(cur); rows.push(row); row = []; cur = ""; }
       else if (ch !== "\r") cur += ch;
     }
     if (cur !== "" || row.length) { row.push(cur); rows.push(row); }
     return rows.filter((r) => r.some((c) => c.trim() !== ""));
   }
+
+  // "1.234,56" (BR) · "1,234.56" (US) · "347.14" · "41086" → number.
+  // When both separators appear, the later one is the decimal mark.
+  function parseNum(v) {
+    let s = String(v ?? "").trim().replace(/[^\d.,-]/g, "");
+    if (!s) return 0;
+    const ld = s.lastIndexOf("."), lc = s.lastIndexOf(",");
+    if (ld >= 0 && lc >= 0) s = lc > ld ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, "");
+    else if (lc >= 0) s = /^-?\d{1,3}(,\d{3})+$/.test(s) ? s.replace(/,/g, "") : s.replace(/,/g, ".");
+    else if (ld >= 0 && /^-?\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, "");
+    const n = parseFloat(s);
+    return isFinite(n) ? n : 0;
+  }
+
+  const stripAcc = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const normH = (s) => stripAcc(s).replace(/^﻿/, "").toLowerCase().trim();
+
+  // Header aliases → sheet fields. Covers Meta Ads Manager exports (pt/en),
+  // Google Ads and the app's own export format.
+  const CSV_FIELDS = {
+    campanha:   [/nome da campanha/, /^campanha$/, /campaign name/, /^campaign$/],
+    canal:      [/^canal$/, /^channel$/, /^plataforma$/, /^platform$/],
+    invest:     [/valor usado/, /amount spent/, /^investimento$/, /^invest\.?$/, /^custo$/, /^cost$/, /^spend$/, /^gasto$/],
+    receita:    [/^receita$/, /valor de conversao/, /conversion value/, /valor de compra/, /purchase value/, /^revenue$/, /^faturamento$/],
+    leads:      [/^resultados?$/, /^leads?$/, /^results?$/, /^convers(oes|ions)?$/, /conversas iniciadas/],
+    indicador:  [/indicador de resultado/, /result (indicator|type)/],
+    impressoes: [/^impressoes$/, /^impressions?$/],
+    cliques:    [/cliques no link/, /^cliques( \(todos\))?$/, /link clicks/, /^clicks?$/],
+  };
+  function mapHeader(cells) {
+    const h = cells.map(normH);
+    const map = {}; let hits = 0;
+    for (const f in CSV_FIELDS) {
+      const idx = h.findIndex((c) => CSV_FIELDS[f].some((re) => re.test(c)));
+      if (idx >= 0) { map[f] = idx; hits++; }
+    }
+    return map.campanha != null && hits >= 2 ? map : null;
+  }
+  function normCanal(v, fallback) {
+    const s = normH(v);
+    if (!s) return fallback;
+    if (/facebook|instagram|^meta/.test(s)) return "Meta Ads";
+    if (/google|adwords|youtube/.test(s)) return "Google Ads";
+    if (/tik ?tok/.test(s)) return "TikTok Ads";
+    if (/linkedin/.test(s)) return "LinkedIn";
+    return SHEET_CHANNELS.find((c) => normH(c) === s) || "Outros";
+  }
+
   function importSheetCSV(file) {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        let rows = parseCSV(String(reader.result));
+        const text = String(reader.result).replace(/^﻿/, "");
+        const rows = parseCSV(text, detectDelim(text));
         if (!rows.length) { toast("CSV vazio", false); return; }
-        const first = rows[0].map((c) => c.trim().toLowerCase());
-        if (first.some((c) => /campanha|investimento|canal/.test(c))) rows = rows.slice(1); // drop header
-        sheet = rows.map((r) => ({
-          campanha: (r[0] || "Campanha").trim(),
-          canal: SHEET_CHANNELS.includes((r[1] || "").trim()) ? (r[1] || "").trim() : SHEET_CHANNELS[0],
-          invest: num((r[2] || "").replace(/[^\d.,-]/g, "").replace(".", "").replace(",", ".")),
-          receita: num((r[3] || "").replace(/[^\d.,-]/g, "").replace(".", "").replace(",", ".")),
-          leads: Math.round(num((r[4] || "").replace(/[^\d.-]/g, ""))),
-        }));
+
+        // find a recognizable header row in the first 10 lines
+        let map = null, hIdx = -1;
+        for (let i = 0; i < Math.min(rows.length, 10) && !map; i++) { map = mapHeader(rows[i]); if (map) hIdx = i; }
+
+        let out;
+        if (map) {
+          const headerTxt = rows[hIdx].map(normH).join(" | ");
+          const source = /valor usado|veiculacao|conjunto de anuncios|amount spent/.test(headerTxt) ? "Meta Ads"
+            : /adwords|google|\bcusto\b[\s\S]*\bconvers/.test(headerTxt) ? "Google Ads"
+            : "Outros";
+          const cell = (r, f) => (map[f] != null ? (r[map[f]] || "") : "");
+          out = rows.slice(hIdx + 1).map((r) => {
+            // "Resultados" only counts as leads when the result indicator is
+            // lead-like (messages/conversions) — reach/video results don't.
+            const ind = normH(cell(r, "indicador"));
+            const leadish = !ind || !/reach|alcance|impress|video|thruplay|view/.test(ind);
+            return {
+              campanha: String(cell(r, "campanha")).trim(),
+              canal: normCanal(cell(r, "canal"), source),
+              invest: parseNum(cell(r, "invest")),
+              receita: parseNum(cell(r, "receita")),
+              leads: leadish ? Math.round(parseNum(cell(r, "leads"))) : 0,
+              impressoes: Math.round(parseNum(cell(r, "impressoes"))),
+              cliques: Math.round(parseNum(cell(r, "cliques"))),
+            };
+          });
+        } else {
+          // positional fallback: Campanha, Canal, Investimento, Receita, Leads
+          let body = rows;
+          if (rows[0].map(normH).some((c) => /campanha|investimento|canal/.test(c))) body = rows.slice(1);
+          out = body.map((r) => ({
+            campanha: (r[0] || "Campanha").trim(),
+            canal: normCanal(r[1], SHEET_CHANNELS[0]),
+            invest: parseNum(r[2]),
+            receita: parseNum(r[3]),
+            leads: Math.round(parseNum(r[4])),
+          }));
+        }
+        out = out.filter((r) => r.campanha || r.invest > 0 || r.receita > 0 || r.leads > 0);
+        if (!out.length) { toast("Nenhuma campanha encontrada no CSV", false); return; }
+        sheet = out;
         saveSheet(); renderSheetBody();
-        toast(`${sheet.length} linhas importadas`);
+        toast(`${out.length} campanha${out.length === 1 ? "" : "s"} importada${out.length === 1 ? "" : "s"}`);
       } catch (e) { console.error(e); toast("Falha ao importar CSV", false); }
     };
     reader.readAsText(file);
@@ -1582,7 +1683,7 @@
             <button class="btn btn--ghost" id="plImport"><svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M12 4v10m0 0 4-4m-4 4-4-4M5 19h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg> Importar CSV</button>
             <button class="btn btn--ghost" id="plExport"><svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M12 20V10m0 0 4 4m-4-4-4 4M5 5h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg> Exportar CSV</button>
             <button class="btn btn--brand" id="plAdd"><svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> Linha</button>
-            <input type="file" id="plFile" accept=".csv,text/csv" hidden />
+            <input type="file" id="plFile" accept=".csv,.tsv,text/csv,text/tab-separated-values" hidden />
           </div>
         </div>
 
@@ -1597,7 +1698,7 @@
               <tfoot id="plFoot"></tfoot>
             </table>
           </div>
-          <p class="pl-hint">Edite as células diretamente. ROAS e CPL são calculados automaticamente. Tudo salvo no navegador por cliente.</p>
+          <p class="pl-hint">Edite as células diretamente. ROAS e CPL são calculados automaticamente. Importa o CSV exportado do Gerenciador de Anúncios da Meta, do Google Ads ou no formato simples (Campanha, Canal, Investimento, Receita, Leads). Tudo salvo no navegador por cliente.</p>
         </div>
       </div>`;
 
