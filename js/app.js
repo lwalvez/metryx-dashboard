@@ -246,14 +246,21 @@
       channels, campaigns };
   }
 
-  // When the user typed real numbers in the per-client Planilha, make the
-  // dashboard/report reflect those totals instead of the mock. Deltas keep the
+  // Saved sheet rows for one client — or, for "all", every client's sheet
+  // concatenated (only clients that actually have a saved sheet contribute).
+  function sheetRowsFor(clientId) {
+    const read = (id) => { try { const r = JSON.parse(localStorage.getItem("metryx-sheet:" + id) || "null"); return Array.isArray(r) ? r : []; } catch (_) { return []; } };
+    if (clientId !== "all") return read(clientId);
+    return CLIENTS.filter((c) => c.id !== "all").reduce((acc, c) => acc.concat(read(c.id)), []);
+  }
+
+  // When the user typed/imported real numbers in the Planilha, make the
+  // dashboard/report reflect those totals instead of the mock. Sheet totals
+  // are authoritative (receita 0 stays 0 — no stale mock). Deltas keep the
   // mock trend (they're computed before this override runs).
   function applySheetOverride(d, clientId) {
-    if (clientId === "all") return;
-    let rows = null;
-    try { rows = JSON.parse(localStorage.getItem("metryx-sheet:" + clientId) || "null"); } catch (_) {}
-    if (!Array.isArray(rows) || !rows.length) return;
+    const rows = sheetRowsFor(clientId);
+    if (!rows.length) return;
     const n = (v) => { const x = parseFloat(v); return isFinite(x) ? x : 0; };
     const sInv = rows.reduce((s, r) => s + n(r.invest), 0);
     const sRec = rows.reduce((s, r) => s + n(r.receita), 0);
@@ -263,10 +270,13 @@
     const scI = d.invest > 0 ? sInv / d.invest : 1;
     const scR = d.receita > 0 ? sRec / d.receita : 1;
     d.series = d.series.map((p) => ({ date: p.date, invest: p.invest * scI, receita: p.receita * scR }));
-    if (sInv > 0) d.invest = sInv;
-    if (sRec > 0) d.receita = sRec;
+    d.invest = sInv;
+    d.receita = sRec;
     d.roas = d.invest > 0 ? d.receita / d.invest : 0;
-    if (sLeads > 0) { d.leads = sLeads; d.cpl = d.invest / sLeads; d.resultados = sLeads; d.custoResultado = d.cpl; }
+    d.leads = sLeads;
+    d.cpl = sLeads > 0 ? d.invest / sLeads : 0;
+    d.resultados = sLeads; d.custoResultado = d.cpl;
+    d.cpa *= scI; d.ticket *= scR;
     d.impressoes *= scI; d.cliques *= scI; d.pageViews *= scI;
     if (d.impressoes > 0) d.cpm = (d.invest / d.impressoes) * 1000;
     // Real impressions/clicks from an imported ads CSV beat the scaled mock.
@@ -662,7 +672,7 @@
     host.addEventListener("mouseleave", onLeave);
     host.addEventListener("touchstart", onMove, { passive: true });
     host.addEventListener("touchmove", onMove, { passive: true });
-    $("#rvSub").textContent = `Diário · ${state.range}d · pico ${brl(maxV)}`;
+    $("#rvSub").textContent = `Diário · ${state.range}d · pico ${brl(maxV)}${d.fromSheet ? " · dados da planilha" : ""}`;
   }
 
   /* ============================================================
